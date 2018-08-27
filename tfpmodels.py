@@ -29,25 +29,25 @@ def ifa(N = 1000, K = 2, C = 3, P = 4):
             mixture_distribution=tfd.Categorical(probs=mixture_weights),
             components_distribution=tfd.Normal(loc=mixture_component_means, scale=mixture_component_std, name='mixture_component')),
         reinterpreted_batch_ndims=1,sample_shape=(N,),name='source')
-    w = ed.Normal(loc=0., scale=1., sample_shape=(C, P), name='factor_loadings')
-    X = tf.matmul(z, w, name='data_mean')
-    noise_sigma = ed.InverseGamma(concentration=1., rate=1., sample_shape=(1,P), name='output_noise')
-    Y = ed.Normal(loc=X, scale=noise_sigma, name='data')  
-    return Y
+    factor_loadings = ed.Normal(loc=0., scale=1., sample_shape=(C, P), name='factor_loadings')
+    data_mean = tf.matmul(sources, factor_loadings, name='data_mean')
+    output_noise = ed.InverseGamma(concentration=1., rate=1., sample_shape=(1,P), name='output_noise')
+    data = ed.Normal(loc=X, scale=output_noise, name='data')  
+    return data
 
 def cifa(N = 1000, K = 2, C = 3, P = 4):
     mixture_component_std = ed.InverseGamma(concentration=1., rate=1., sample_shape=(C,K), name='mixture_component_std')
     mixture_weights = ed.Dirichlet(concentration=np.ones(K), sample_shape=(C,), name='mixture_weights')
-    z = ed.Independent(
+    sources = ed.Independent(
         tfd.MixtureSameFamily(
             mixture_distribution=tfd.Categorical(probs=mixture_weights),
             components_distribution=tfd.Normal(loc=tf.zeros_like(mixture_component_std), scale=mixture_component_std, name='mixture_component')),
-        reinterpreted_batch_ndims=1,sample_shape=(N,),name='source')
-    w = ed.Normal(loc=0., scale=1., sample_shape=(C, P), name='factor_loadings')
-    X = tf.matmul(z, w, name='data_mean')
-    noise_sigma = ed.InverseGamma(concentration=1., rate=1., sample_shape=(1,P), name='output_noise')
-    Y = ed.Normal(loc=X, scale=noise_sigma, name='data')  
-    return Y
+        reinterpreted_batch_ndims=1,sample_shape=(N,),name='sources')
+    factor_loadings = ed.Normal(loc=0., scale=1., sample_shape=(C, P), name='factor_loadings')
+    data_mean = tf.matmul(sources, factor_loadings, name='data_mean')
+    output_noise = ed.InverseGamma(concentration=1., rate=1., sample_shape=(1,P), name='output_noise')
+    data = ed.Normal(loc=X, scale=output_noise, name='data')  
+    return data
 
 
 model = cifa(2000, 2, 2, 2)
