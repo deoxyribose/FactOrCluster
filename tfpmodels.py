@@ -21,7 +21,7 @@ import numpy as np
 #    return Y
 
 def ifa(N = 1000, K = 2, C = 3, P = 4):
-    mixture_component_means = ed.Normal(loc=0., scale=1., sample_shape=(K,C), name='mixture_component_means')
+    mixture_component_means = ed.Normal(loc=0., scale=1., sample_shape=(C,K), name='mixture_component_means')
     mixture_component_std = ed.InverseGamma(concentration=1., rate=1., sample_shape=(C,K), name='mixture_component_std')
     mixture_weights = ed.Dirichlet(concentration=np.ones(K), sample_shape=(C,), name='mixture_weights')
     z = ed.Independent(
@@ -31,8 +31,8 @@ def ifa(N = 1000, K = 2, C = 3, P = 4):
         reinterpreted_batch_ndims=1,sample_shape=(N,),name='source')
     factor_loadings = ed.Normal(loc=0., scale=1., sample_shape=(C, P), name='factor_loadings')
     data_mean = tf.matmul(sources, factor_loadings, name='data_mean')
-    output_noise = ed.InverseGamma(concentration=1., rate=1., sample_shape=(1,P), name='output_noise')
-    data = ed.Normal(loc=X, scale=output_noise, name='data')  
+    data_variance = ed.InverseGamma(concentration=1., rate=1., sample_shape=(1,P), name='data_variance')
+    data = ed.Normal(loc=X, scale=data_variance, name='data')  
     return data
 
 def cifa(N = 1000, K = 2, C = 3, P = 4):
@@ -45,8 +45,8 @@ def cifa(N = 1000, K = 2, C = 3, P = 4):
         reinterpreted_batch_ndims=1,sample_shape=(N,),name='sources')
     factor_loadings = ed.Normal(loc=0., scale=1., sample_shape=(C, P), name='factor_loadings')
     data_mean = tf.matmul(sources, factor_loadings, name='data_mean')
-    output_noise = ed.InverseGamma(concentration=1., rate=1., sample_shape=(1,P), name='output_noise')
-    data = ed.Normal(loc=X, scale=output_noise, name='data')  
+    data_variance = ed.InverseGamma(concentration=1., rate=1., sample_shape=(1,P), name='data_variance')
+    data = ed.Normal(loc=X, scale=data_variance, name='data')  
     return data
 
 
