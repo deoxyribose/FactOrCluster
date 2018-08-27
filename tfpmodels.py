@@ -20,7 +20,7 @@ import numpy as np
 #    Y = ed.Normal(loc=X, scale=noise_sigma, name='data')  
 #    return Y
 
-def cifa(N = 1000, K = 2, C = 3, P = 4):
+def ifa(N = 1000, K = 2, C = 3, P = 4):
     mixture_component_means = ed.Normal(loc=0., scale=1., sample_shape=(K,C), name='mixture_component_means')
     mixture_component_std = ed.InverseGamma(concentration=1., rate=1., sample_shape=(C,K), name='mixture_component_std')
     mixture_weights = ed.Dirichlet(concentration=np.ones(K), sample_shape=(C,), name='mixture_weights')
