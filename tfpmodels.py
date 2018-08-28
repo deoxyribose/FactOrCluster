@@ -6,7 +6,7 @@ import numpy as np
 
 from future_features import tape
 
-def independentFactorAnalysis(n_observations = 1000, n_components_in_mixture = 2, n_sources = 2, n_features = 2, mixture_component_means_mean = 0., mixture_component_means_std = 1., mixture_component_std_concentration = 1., mixture_component_std_rate=1.,data_std_concentration=1.,data_std_rate=1.):
+def independentFactorAnalysis(n_observations = 1000, n_components_in_mixture = 2, n_sources = 2, n_features = 2, mixture_component_means_mean = 0., mixture_component_means_std = 1., mixture_component_std_concentration = 1., mixture_component_std_rate=1.,mixture_weights_concentration=None,data_std_concentration=1.,data_std_rate=1.):
     if mixture_weights_concentration is None:
         mixture_weights_concentration = np.ones(n_components_in_mixture, dtype='float32')
     mixture_component_means = ed.Normal(loc=mixture_component_means_mean, scale=mixture_component_means_std, sample_shape=(n_sources,n_components_in_mixture), name='mixture_component_means')
