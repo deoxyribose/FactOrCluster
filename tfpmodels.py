@@ -4,14 +4,12 @@ tfd = tfp.distributions
 ed = tfp.edward2
 import numpy as np
 
-from future_features import tape
-
 def independentFactorAnalysis(n_observations = 1000, n_components_in_mixture = 2, n_sources = 2, n_features = 2, mixture_component_means_mean = 0., mixture_component_means_std = 1., mixture_component_std_concentration = 1., mixture_component_std_rate=1.,mixture_weights_concentration=np.ones(2, dtype='float32'),data_std_concentration=1.,data_std_rate=1.):
     # check that Dirichlet concentration is a vector
     if hasattr(mixture_weights_concentration,'shape') and mixture_weights_concentration.shape == (n_components_in_mixture,):
         pass
     else:
-        mixture_weights_concentration = np.ones(n_components_in_mixture, dtype='float32')
+        mixture_weights_concentration = mixture_weights_concentration*np.ones(n_components_in_mixture, dtype='float32')
     mixture_component_means = ed.Normal(loc=mixture_component_means_mean, scale=mixture_component_means_std, sample_shape=(n_sources,n_components_in_mixture), name='mixture_component_means')
     mixture_component_std = ed.Gamma(concentration=mixture_component_std_concentration, rate=mixture_component_std_rate, sample_shape=(n_sources,n_components_in_mixture), name='mixture_component_std')
     mixture_weights = ed.Dirichlet(concentration=mixture_weights_concentration, sample_shape=(n_sources,), name='mixture_weights')
@@ -31,7 +29,7 @@ def centeredIndependentFactorAnalysis(n_observations = 1000, n_components_in_mix
     if hasattr(mixture_weights_concentration,'shape') and mixture_weights_concentration.shape == (n_components_in_mixture,):
         pass
     else:
-        mixture_weights_concentration = np.ones(n_components_in_mixture, dtype='float32')
+        mixture_weights_concentration = mixture_weights_concentration*np.ones(n_components_in_mixture, dtype='float32')
     mixture_component_std = ed.Gamma(concentration=mixture_component_std_concentration, rate=mixture_component_std_rate, sample_shape=(n_sources,n_components_in_mixture), name='mixture_component_std')
     mixture_weights = ed.Dirichlet(concentration=mixture_weights_concentration, sample_shape=(n_sources,), name='mixture_weights')
     sources = ed.Independent(
@@ -50,7 +48,7 @@ def mixtureOfGaussians(n_observations = 1000, n_components = 2, n_features = 2, 
     if hasattr(mixture_weights_concentration,'shape') and mixture_weights_concentration.shape == (n_components_in_mixture,):
         pass
     else:
-        mixture_weights_concentration = np.ones(n_components_in_mixture, dtype='float32')
+        mixture_weights_concentration = mixture_weights_concentration*np.ones(n_components_in_mixture, dtype='float32')
     mixture_weights = ed.Dirichlet(concentration=mixture_weights_concentration, name='mixture_weights')
     mixture_component_means = ed.Normal(loc=mixture_component_means, scale=mixture_weights_concentration, sample_shape=(n_components, n_features), name='mixture_component_means')
     mixture_component_covariances_cholesky = ed.Wishart(
