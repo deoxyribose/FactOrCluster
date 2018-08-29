@@ -57,7 +57,7 @@ def mixtureOfGaussians(n_observations = 1000, n_components = 2, n_features = 2, 
                     scale_tril=mixture_component_covariances_cholesky,
                     name='component'), sample_shape=(n_observations,), name='data')
 
-def independentFactorAnalysisTest(n_observations, factor_loadings, mixture_weights, mixture_component_std, data_std):
+def centeredIndependentFactorAnalysisTest(n_observations, factor_loadings, mixture_weights, mixture_component_std, data_std):
     sources = ed.Independent(
         tfd.MixtureSameFamily(
             mixture_distribution=tfd.Categorical(probs=mixture_weights),
