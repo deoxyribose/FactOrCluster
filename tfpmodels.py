@@ -57,6 +57,7 @@ def mixtureOfGaussians(n_observations = 1000, n_components = 2, n_features = 2, 
                     scale_tril=mixture_component_covariances_cholesky,
                     name='component'), sample_shape=(n_observations,), name='data')
 
+'''
 def centeredIndependentFactorAnalysisTest(n_observations, factor_loadings, mixture_weights, mixture_component_std, data_std):
     sources = ed.Independent(
         tfd.MixtureSameFamily(
@@ -65,6 +66,19 @@ def centeredIndependentFactorAnalysisTest(n_observations, factor_loadings, mixtu
         reinterpreted_batch_ndims=1,sample_shape=(n_observations,),name='sources')
     data_mean = tf.matmul(sources, factor_loadings, name='data_mean')
     data = ed.Normal(loc=data_mean, scale=data_std, name='data')
+    return data
+'''
+
+def centeredIndependentFactorAnalysisTest(n_observations, mc_samples, factor_loadings, mixture_weights, mixture_component_std, data_std):
+    sources = ed.Independent(
+        tfd.MixtureSameFamily(
+            mixture_distribution=tfd.Categorical(probs=mixture_weights),
+            components_distribution=tfd.Normal(loc=tf.zeros_like(mixture_component_std), scale=mixture_component_std, name='mixture_component')),
+        reinterpreted_batch_ndims=1,sample_shape=(mc_samples, n_observations),name='sources')
+    data_mean = tf.einsum('bik,kj->ijb', sources, factor_loadings, name='data_mean')
+    data = tfd.MixtureSameFamily(
+                mixture_distribution=tfd.Categorical(probs=tf.ones(mc_samples)/mc_samples),
+                components_distribution=tfd.Normal(loc=data_mean, scale=data_std[:,:,None], name='data'), name='mc_approx')
     return data
 
 def mixtureOfGaussiansTest(n_observations, mixture_weights, mixture_component_means, mixture_component_covariances_cholesky):
