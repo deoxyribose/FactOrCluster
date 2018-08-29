@@ -50,7 +50,7 @@ def neg_log_lik(MAP_parameter,model,sess,data):
     return sess.run(-tf.reduce_mean(model_MAP.distribution.log_prob(data)))
 
 with tape() as reference_tf:
-    data_tf = mixtureOfGaussians(n_observations=N + Ntest, n_components=3, n_features=n_features, mixture_component_means_mean=placeholder_deviation)
+    data_tf = mixtureOfGaussians(n_observations=N + Ntest, n_components=3, n_features=n_features, mixture_component_means_std=placeholder_deviation)
         
 with tf.Session() as sess:
     for deviation in deviations:
