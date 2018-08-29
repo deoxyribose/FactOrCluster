@@ -42,10 +42,10 @@ def centeredIndependentFactorAnalysis(n_observations = 1000, n_components_in_mix
 def mixtureOfGaussians(n_observations = 1000, n_components = 2, n_features = 2, mixture_component_means_mean = 0., mixture_component_means_std = 1., mixture_component_covariances_cholesky_df = None, mixture_component_covariances_cholesky_scale_tril=None,mixture_weights_concentration=None):
     if mixture_weights_concentration is None:
         mixture_weights_concentration = np.ones(n_components, dtype='float32')
-    if mixture_component_covariances_cholesky_scale_tril is None:
-        mixture_component_covariances_cholesky_scale_tril = tf.eye(n_features)
     if mixture_component_covariances_cholesky_df is None:
-        mixture_component_covariances_cholesky_df = n_features + 1.
+        mixture_component_covariances_cholesky_df = n_features + 2.
+    if mixture_component_covariances_cholesky_scale_tril is None:
+        mixture_component_covariances_cholesky_scale_tril = (1./(mixture_component_covariances_cholesky_df - n_features - 1.))*tf.eye(n_features)
     mixture_weights = ed.Dirichlet(concentration=mixture_weights_concentration, name='mixture_weights')
     mixture_component_means = ed.Normal(loc=mixture_component_means_mean, scale=mixture_component_means_std, sample_shape=(n_components, n_features), name='mixture_component_means')
     mixture_component_covariances_cholesky = ed.Wishart(
@@ -57,7 +57,7 @@ def mixtureOfGaussians(n_observations = 1000, n_components = 2, n_features = 2, 
                     scale_tril=mixture_component_covariances_cholesky,
                     name='component'), sample_shape=(n_observations,), name='data')
 
-def independentFactorAnalysisTest(n_observations, sources, factor_loadings, mixture_weights, mixture_component_std, data_std):
+def independentFactorAnalysisTest(n_observations, factor_loadings, mixture_weights, mixture_component_std, data_std):
     sources = ed.Independent(
         tfd.MixtureSameFamily(
             mixture_distribution=tfd.Categorical(probs=mixture_weights),
