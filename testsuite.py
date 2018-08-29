@@ -27,7 +27,7 @@ mog_4 = Mapper(mixtureOfGaussians, 'mog', observed_variable_names=['data'], n_ob
 
 models = [cifa_2_2, mog_4]
 model_names = [model.model_name for model in models]
-test_models = [independentFactorAnalysisTest,mixtureOfGaussiansTest]
+test_models = [centeredIndependentFactorAnalysis,mixtureOfGaussiansTest]
 
 train_neg_log_joint = xr.DataArray(np.zeros((len(models), len(deviations), n_restarts, n_datasets)),dims=['model', 'deviation', 'restart', 'dataset'], coords={'model': model_names, 'deviation': deviations, 'restart': range(n_restarts), 'dataset': range(n_datasets)})
 train_neg_log_lik = xr.DataArray(np.zeros((len(models), len(deviations), n_restarts, n_datasets)),dims=['model', 'deviation', 'restart', 'dataset'], coords={'model': model_names, 'deviation': deviations, 'restart': range(n_restarts), 'dataset': range(n_datasets)})
