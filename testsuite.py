@@ -43,9 +43,9 @@ def neg_log_lik(MAP_parameter,model,sess,data):
     except:
         pass
     N = data.shape[0]
-    # model here is observation model, so we're evaluating int(p(x_new|theta,z_new)p(z_new),dz)
-    # for MoGs, z is already collapsed
-    # for ifa, z is sampled?
+    # model here is observation model
+    # for MoGs, z is already collapsed, so we're evaluating int(p(x_new|theta,z)p(z),dz)
+    # for ifa, z is sampled once, so we're evaluating int(p(x_new|theta,z_new)q(z),dz) where q(z) is a pointmass.
     model_MAP = model(n_observations = N, **MAP_parameter)
     return sess.run(-tf.reduce_mean(model_MAP.distribution.log_prob(data)))
 
