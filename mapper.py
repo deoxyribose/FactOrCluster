@@ -11,6 +11,7 @@ class Mapper:
 
     _positive_distributions = [tfd.InverseGamma, tfd.Gamma]
     _simplex_distributions = [tfd.Dirichlet]
+    _tril_distributions = [tfd.Wishart]
 
     def __init__(self, model, model_name, observed_variable_names, *args, **kwargs):
         self.model = model
@@ -33,6 +34,11 @@ class Mapper:
             return tfp.trainable_distributions.softplus_and_shift(variable)
         if distribution.__class__ in self._simplex_distributions:
             return tf.nn.softmax(variable)
+        if distribution.__class__ in self._tril_distributions:
+            batch = variable.shape[0]
+            dim = variable.shape[1]
+            trildim = dim*(dim+1)//2
+            return tfp.trainable_distributions.tril_with_diag_softplus_and_shift(tf.reshape(variable,(batch,-1))[:,:trildim])
         return variable
 
     def map_loss(self, **kwargs):
