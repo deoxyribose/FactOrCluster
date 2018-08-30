@@ -13,6 +13,8 @@ from tfpmodels import centeredIndependentFactorAnalysisTest, mixtureOfGaussiansT
 import pandas as pd
 import xarray as xr
 
+from sklearn.decomposition import FastICA
+
 
 def neg_log_lik(MAP_parameter,model,data):
     # MAP_parameter for ifa includes sources, but ifa_test doesn't take it as input
@@ -27,15 +29,15 @@ def neg_log_lik(MAP_parameter,model,data):
     # for MoGs, z is already collapsed, so we're evaluating int(p(x_new|theta,z)p(z),dz)
     # for ifa, z is sampled once, so we're evaluating int(p(x_new|theta,z_new)q(z),dz) where q(z) is a pointmass.
     try:
-        model_MAP = model(n_observations = N, mc_samples=100, **MAP_parameter)
+        model_MAP = model(n_observations = N, mc_samples=1000, **MAP_parameter)
     except TypeError:
         model_MAP = model(n_observations = N, **MAP_parameter)
     return -tf.reduce_mean(model_MAP.distribution.log_prob(data))
 
 if __name__ == '__main__':
 
-    N = 100
-    Ntest = 100
+    N = 1000
+    Ntest = 1000
 
     n_features = 4
     n_restarts = 10
@@ -57,6 +59,10 @@ if __name__ == '__main__':
         train_neg_log_lik_op.append(neg_log_lik(model.variables,test_model,data_train))
         test_neg_log_lik_op.append(neg_log_lik(model.variables,test_model,data_test))
 
+    ica_directions = tf.placeholder(shape=(2,n_features), dtype='float32')
+    assign_defaults = [None,None]
+    assign_defaults[0] = models[0].assigner(data_std=1e-3*tf.ones((1,n_features)), factor_loadings=ica_directions)
+    assign_defaults[1] = models[1].assigner(mixture_component_covariances_cholesky=10*tf.tile(tf.eye(n_features)[None],[4,1,1]))
 
     train_neg_log_joint = xr.DataArray(np.zeros((len(models), len(deviations), n_restarts, n_datasets)),dims=['model', 'deviation', 'restart', 'dataset'], coords={'model': model_names, 'deviation': deviations, 'restart': range(n_restarts), 'dataset': range(n_datasets)})
     train_neg_log_lik = xr.DataArray(np.zeros((len(models), len(deviations), n_restarts, n_datasets)),dims=['model', 'deviation', 'restart', 'dataset'], coords={'model': model_names, 'deviation': deviations, 'restart': range(n_restarts), 'dataset': range(n_datasets)})
@@ -65,20 +71,27 @@ if __name__ == '__main__':
 
     placeholder_deviation = tf.placeholder(dtype='float32')
 
+    fica = FastICA(n_components=2)
+                
 
     with tape() as reference_tf:
-        data_tf = mixtureOfGaussians(n_observations=N + Ntest, n_components=3, n_features=n_features, mixture_component_means_std=placeholder_deviation)
+        data_tf = mixtureOfGaussians(n_observations=N + Ntest, n_components=4, n_features=n_features, mixture_component_means_std=placeholder_deviation)
             
     with tf.Session() as sess:
         for deviation in deviations:
             for dataset in range(n_datasets):
                 data, reference = sess.run([data_tf, reference_tf], feed_dict={placeholder_deviation: deviation})
+                
+                
+                
                 loss = {}
                 opt = {}
                 for model in models: 
                     loss[model.model_name], opt[model.model_name] = model.map_optimizer(data=data[:N])
+                    
                 for restart in range(n_restarts):        
                     sess.run(tf.global_variables_initializer())
+                    sess.run(assign_defaults, feed_dict={ica_directions: fica.fit_transform(data.T).T})
                     for i,model in enumerate(models): 
                         opt[model.model_name].minimize()
                         MAP_parameter, converged_loss = sess.run([model.variables, loss[model.model_name]])

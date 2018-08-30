@@ -17,7 +17,7 @@ class Mapper:
         self.model = model
         self.model_name = model_name
         self.observed_variable_names = observed_variable_names
-        self.loss_fn = ed.make_log_joint_fn(model) 
+        self.log_joint_fn = ed.make_log_joint_fn(model) 
         self._args = args
         self._kwargs = kwargs
         with tape() as self.tape:
@@ -41,9 +41,15 @@ class Mapper:
             return tfp.trainable_distributions.tril_with_diag_softplus_and_shift(tf.reshape(variable,(batch,-1))[:,:trildim])
         return variable
 
-    def map_loss(self, **kwargs):
-        return self.loss_fn(*self._args, **self._kwargs, **self.variables, **kwargs)
+    def map_neg_log_joint_fn(self, **kwargs):
+        return -self.log_joint_fn(*self._args, **self._kwargs, **self.variables, **kwargs)
 
     def map_optimizer(self, **kwargs):
-        loss = -self.map_loss(**kwargs)
-        return loss, tf.contrib.opt.ScipyOptimizerInterface(loss, self.unconstrained_variables.values())
+        map_neg_log_joint = self.map_neg_log_joint_fn(**kwargs)
+        return map_neg_log_joint, tf.contrib.opt.ScipyOptimizerInterface(loss, self.unconstrained_variables.values())
+
+    def assigner(self, **kwargs):
+        assign_ops = []
+        for key, val in kwargs.items():
+            assign_ops.append(tf.assign(self.unconstrained_variables[key], val))
+        return tf.group(assign_ops)
