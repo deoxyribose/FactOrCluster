@@ -16,7 +16,7 @@ import xarray as xr
 from sklearn.decomposition import FastICA
 
 
-def neg_log_lik(MAP_parameter,model,data):
+def MAP_model(MAP_parameter,model,N):
     # MAP_parameter for ifa includes sources, but ifa_test doesn't take it as input
     MAP_parameter = dict(MAP_parameter)
     try:
@@ -24,7 +24,6 @@ def neg_log_lik(MAP_parameter,model,data):
         MAP_parameter.pop('sources')
     except:
         pass
-    N = data.shape[0]
     # model here is observation model
     # for MoGs, z is already collapsed, so we're evaluating int(p(x_new|theta,z)p(z),dz)
     # for ifa, z is sampled once, so we're evaluating int(p(x_new|theta,z_new)q(z),dz) where q(z) is a pointmass.
@@ -32,7 +31,12 @@ def neg_log_lik(MAP_parameter,model,data):
         model_MAP = model(n_observations = N, mc_samples=1000, **MAP_parameter)
     except TypeError:
         model_MAP = model(n_observations = N, **MAP_parameter)
-    return -tf.reduce_mean(model_MAP.distribution.log_prob(data)), model_MAP
+    return model_MAP
+
+def neg_log_lik(MAP_parameter,model,data):
+    N = data.shape[0]
+    model_MAP = MAP_model(MAP_parameter,model,N)
+    return -tf.reduce_mean(model_MAP.distribution.log_prob(data))
 
 if __name__ == '__main__':
 
@@ -56,8 +60,8 @@ if __name__ == '__main__':
     data_train = tf.placeholder(shape=(N,n_features), dtype='float32') 
     data_test = tf.placeholder(shape=(Ntest,n_features), dtype='float32')
     for model, test_model in zip(models, test_models):
-        train_neg_log_lik_op.append(neg_log_lik(model.variables,test_model,data_train)[0])
-        test_neg_log_lik_op.append(neg_log_lik(model.variables,test_model,data_test)[0])
+        train_neg_log_lik_op.append(neg_log_lik(model.variables,test_model,data_train))
+        test_neg_log_lik_op.append(neg_log_lik(model.variables,test_model,data_test))
 
     ica_directions = tf.placeholder(shape=(2,n_features), dtype='float32')
     assign_defaults = [None,None]
