@@ -46,7 +46,7 @@ class Mapper:
 
     def map_optimizer(self, **kwargs):
         map_neg_log_joint = self.map_neg_log_joint_fn(**kwargs)
-        return map_neg_log_joint, tf.contrib.opt.ScipyOptimizerInterface(loss, self.unconstrained_variables.values())
+        return map_neg_log_joint, tf.contrib.opt.ScipyOptimizerInterface(map_neg_log_joint, self.unconstrained_variables.values())
 
     def assigner(self, **kwargs):
         assign_ops = []
