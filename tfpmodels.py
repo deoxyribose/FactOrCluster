@@ -76,7 +76,7 @@ def centeredIndependentFactorAnalysisTest(n_observations, mc_samples, factor_loa
             components_distribution=tfd.Normal(loc=tf.zeros_like(mixture_component_std), scale=mixture_component_std, name='mixture_component')),
         reinterpreted_batch_ndims=1,sample_shape=(mc_samples, n_observations),name='sources')
     data_mean = tf.einsum('bik,kj->ijb', sources, factor_loadings, name='data_mean')
-    data = tfd.MixtureSameFamily(
+    data = ed.MixtureSameFamily(
                 mixture_distribution=tfd.Categorical(probs=tf.ones(mc_samples)/mc_samples),
                 components_distribution=tfd.Normal(loc=data_mean, scale=data_std[:,:,None], name='data'), name='mc_approx')
     return data

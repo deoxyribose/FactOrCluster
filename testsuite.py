@@ -14,9 +14,11 @@ import pandas as pd
 import xarray as xr
 
 
-def neg_log_lik(MAP_parameter,model,sess,data):
+def neg_log_lik(MAP_parameter,model,data):
     # MAP_parameter for ifa includes sources, but ifa_test doesn't take it as input
+    MAP_parameter = dict(MAP_parameter)
     try:
+        
         MAP_parameter.pop('sources')
     except:
         pass
@@ -24,8 +26,11 @@ def neg_log_lik(MAP_parameter,model,sess,data):
     # model here is observation model
     # for MoGs, z is already collapsed, so we're evaluating int(p(x_new|theta,z)p(z),dz)
     # for ifa, z is sampled once, so we're evaluating int(p(x_new|theta,z_new)q(z),dz) where q(z) is a pointmass.
-    model_MAP = model(n_observations = N, **MAP_parameter)
-    return sess.run(-tf.reduce_mean(model_MAP.distribution.log_prob(data)))
+    try:
+        model_MAP = model(n_observations = N, mc_samples=100, **MAP_parameter)
+    except TypeError:
+        model_MAP = model(n_observations = N, **MAP_parameter)
+    return -tf.reduce_mean(model_MAP.distribution.log_prob(data))
 
 if __name__ == '__main__':
 
@@ -38,12 +43,20 @@ if __name__ == '__main__':
 
     deviations = np.logspace(-3,1,5, dtype='float32')
 
-    cifa_2_2 = Mapper(centeredIndependentFactorAnalysis, 'cifa', observed_variable_names=['data'], n_observations=N, n_components_in_mixture = 2, n_sources=2, n_features=n_features)
-    mog_4 = Mapper(mixtureOfGaussians, 'mog', observed_variable_names=['data'], n_observations=N, n_components=4, n_features=n_features)
-
-    models = [cifa_2_2, mog_4]
+    models = []
+    models.append(Mapper(centeredIndependentFactorAnalysis, 'cifa', observed_variable_names=['data'], n_observations=N, n_components_in_mixture = 2, n_sources=2, n_features=n_features))
+    models.append(Mapper(mixtureOfGaussians, 'mog', observed_variable_names=['data'], n_observations=N, n_components=4, n_features=n_features))        
     model_names = [model.model_name for model in models]
-    test_models = [centeredIndependentFactorAnalysis,mixtureOfGaussiansTest]
+    
+    test_models = [centeredIndependentFactorAnalysisTest,mixtureOfGaussiansTest]
+    train_neg_log_lik_op = []
+    test_neg_log_lik_op = []
+    data_train = tf.placeholder(shape=(N,n_features), dtype='float32') 
+    data_test = tf.placeholder(shape=(Ntest,n_features), dtype='float32')
+    for model, test_model in zip(models, test_models):
+        train_neg_log_lik_op.append(neg_log_lik(model.variables,test_model,data_train))
+        test_neg_log_lik_op.append(neg_log_lik(model.variables,test_model,data_test))
+
 
     train_neg_log_joint = xr.DataArray(np.zeros((len(models), len(deviations), n_restarts, n_datasets)),dims=['model', 'deviation', 'restart', 'dataset'], coords={'model': model_names, 'deviation': deviations, 'restart': range(n_restarts), 'dataset': range(n_datasets)})
     train_neg_log_lik = xr.DataArray(np.zeros((len(models), len(deviations), n_restarts, n_datasets)),dims=['model', 'deviation', 'restart', 'dataset'], coords={'model': model_names, 'deviation': deviations, 'restart': range(n_restarts), 'dataset': range(n_datasets)})
@@ -71,5 +84,5 @@ if __name__ == '__main__':
                         MAP_parameter, converged_loss = sess.run([model.variables, loss[model.model_name]])
                         MAP_parameters[(model.model_name, deviation, restart, dataset)] = MAP_parameter
                         train_neg_log_joint.loc[{'model': model.model_name, 'deviation': deviation, 'restart': restart, 'dataset': dataset}] = converged_loss
-                        train_neg_log_lik.loc[{'model': model.model_name, 'deviation': deviation, 'restart': restart, 'dataset': dataset}] = neg_log_lik(MAP_parameter,test_models[i],sess,data[:N])
-                        test_neg_log_lik.loc[{'model': model.model_name, 'deviation': deviation, 'restart': restart, 'dataset': dataset}] = neg_log_lik(MAP_parameter,test_models[i],sess,data[N:])
+                        train_neg_log_lik.loc[{'model': model.model_name, 'deviation': deviation, 'restart': restart, 'dataset': dataset}] = sess.run(train_neg_log_lik_op[i], feed_dict={data_train: data[N:]}) #neg_log_lik(model.variables,test_models[i],sess,data[:N])
+                        test_neg_log_lik.loc[{'model': model.model_name, 'deviation': deviation, 'restart': restart, 'dataset': dataset}] = sess.run(test_neg_log_lik_op[i], feed_dict={data_test: data[:N]})#neg_log_lik(model.variables,test_models[i],sess,data[N:])
