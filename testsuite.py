@@ -32,7 +32,7 @@ def neg_log_lik(MAP_parameter,model,data):
         model_MAP = model(n_observations = N, mc_samples=1000, **MAP_parameter)
     except TypeError:
         model_MAP = model(n_observations = N, **MAP_parameter)
-    return -tf.reduce_mean(model_MAP.distribution.log_prob(data))
+    return -tf.reduce_mean(model_MAP.distribution.log_prob(data)), model_MAP
 
 if __name__ == '__main__':
 
@@ -56,8 +56,8 @@ if __name__ == '__main__':
     data_train = tf.placeholder(shape=(N,n_features), dtype='float32') 
     data_test = tf.placeholder(shape=(Ntest,n_features), dtype='float32')
     for model, test_model in zip(models, test_models):
-        train_neg_log_lik_op.append(neg_log_lik(model.variables,test_model,data_train))
-        test_neg_log_lik_op.append(neg_log_lik(model.variables,test_model,data_test))
+        train_neg_log_lik_op.append(neg_log_lik(model.variables,test_model,data_train)[0])
+        test_neg_log_lik_op.append(neg_log_lik(model.variables,test_model,data_test)[0])
 
     ica_directions = tf.placeholder(shape=(2,n_features), dtype='float32')
     assign_defaults = [None,None]
