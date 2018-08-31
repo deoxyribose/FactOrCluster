@@ -14,6 +14,7 @@ import pandas as pd
 import xarray as xr
 
 from sklearn.decomposition import FastICA
+from sklearn.cluster import KMeans
 
 
 def MAP_model(MAP_parameter,model,N):
@@ -87,7 +88,7 @@ if __name__ == '__main__':
         for deviation in deviations:
             for dataset in range(n_datasets):
                 data, reference = sess.run([data_tf, reference_tf], feed_dict={placeholder_deviation: deviation})
-                kmeans = KMeans(n_clusters=n_components).fit(data[:N])
+                kmeans = KMeans(n_clusters=n_clusters).fit(data[:N])
                 loss = {}
                 opt = {}
                 for model in models: 
