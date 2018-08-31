@@ -68,7 +68,7 @@ if __name__ == '__main__':
     kmeans_cluster_centers = tf.placeholder(shape=(n_clusters,n_features), dtype='float32')
     assign_defaults = [None,None]
     assign_defaults[0] = models[0].assigner(data_std=1e-3*tf.ones((1,n_features)), factor_loadings=ica_directions)
-    assign_defaults[1] = models[1].assigner(mixture_component_covariances_cholesky=10*tf.tile(tf.eye(n_features)[None],mixture_component_means=kmeans_cluster_centers))
+    assign_defaults[1] = models[1].assigner(mixture_component_covariances_cholesky=10*tf.tile(tf.eye(n_features)[None],[n_clusters,1,1]),mixture_component_means=kmeans_cluster_centers)
 
     train_neg_log_joint = xr.DataArray(np.zeros((len(models), len(deviations), n_restarts, n_datasets)),dims=['model', 'deviation', 'restart', 'dataset'], coords={'model': model_names, 'deviation': deviations, 'restart': range(n_restarts), 'dataset': range(n_datasets)})
     train_neg_log_lik = xr.DataArray(np.zeros((len(models), len(deviations), n_restarts, n_datasets)),dims=['model', 'deviation', 'restart', 'dataset'], coords={'model': model_names, 'deviation': deviations, 'restart': range(n_restarts), 'dataset': range(n_datasets)})
@@ -101,5 +101,5 @@ if __name__ == '__main__':
                         MAP_parameter, converged_loss = sess.run([model.variables, loss[model.model_name]])
                         MAP_parameters[(model.model_name, deviation, restart, dataset)] = MAP_parameter
                         train_neg_log_joint.loc[{'model': model.model_name, 'deviation': deviation, 'restart': restart, 'dataset': dataset}] = converged_loss
-                        train_neg_log_lik.loc[{'model': model.model_name, 'deviation': deviation, 'restart': restart, 'dataset': dataset}] = sess.run(train_neg_log_lik_op[i], feed_dict={data_train: data[:N]}) #neg_log_lik(model.variables,test_models[i],sess,data[:N])
-                        test_neg_log_lik.loc[{'model': model.model_name, 'deviation': deviation, 'restart': restart, 'dataset': dataset}] = sess.run(test_neg_log_lik_op[i], feed_dict={data_test: data[N:]})#neg_log_lik(model.variables,test_models[i],sess,data[N:])
+                        train_neg_log_lik.loc[{'model': model.model_name, 'deviation': deviation, 'restart': restart, 'dataset': dataset}] = sess.run(train_neg_log_lik_op[i], feed_dict={data_train: data[:N]})
+                        test_neg_log_lik.loc[{'model': model.model_name, 'deviation': deviation, 'restart': restart, 'dataset': dataset}] = sess.run(test_neg_log_lik_op[i], feed_dict={data_test: data[N:]})
