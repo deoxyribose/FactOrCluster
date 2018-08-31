@@ -95,7 +95,7 @@ if __name__ == '__main__':
                     
                 for restart in range(n_restarts):        
                     sess.run(tf.global_variables_initializer())
-                    sess.run(assign_defaults, feed_dict={ica_directions: fica.fit_transform(data.T).T})
+                    sess.run(assign_defaults, feed_dict={ica_directions: fica.fit(data).mixing_.T})
                     for i,model in enumerate(models): 
                         opt[model.model_name].minimize()
                         MAP_parameter, converged_loss = sess.run([model.variables, loss[model.model_name]])
