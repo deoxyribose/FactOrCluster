@@ -49,7 +49,8 @@ if __name__ == '__main__':
     n_restarts = 10
     n_datasets = 10
 
-    deviations = np.logspace(-3,1,5, dtype='float32')
+    #deviations = np.logspace(-3,1,5, dtype='float32')
+    deviations = np.logspace(-1,1,5, dtype='float32')
 
     models = []
     models.append(Mapper(centeredIndependentFactorAnalysis, 'cifa', observed_variable_names=['data'], n_observations=N, n_components_in_mixture = 2, n_sources=2, n_features=n_features))
@@ -82,7 +83,8 @@ if __name__ == '__main__':
                 
 
     with tape() as reference_tf:
-        data_tf = mixtureOfGaussians(n_observations=N + Ntest, n_components=n_clusters, n_features=n_features, mixture_component_means_std=placeholder_deviation)
+        data_tf = centeredIndependentFactorAnalysis(n_observations=N + Ntest, n_components_in_mixture = n_clusters, n_sources=n_clusters, n_features=n_features, data_std_rate=placeholder_deviation)
+        #data_tf = mixtureOfGaussians(n_observations=N + Ntest, n_components=n_clusters, n_features=n_features, mixture_component_means_std=placeholder_deviation)
             
     with tf.Session() as sess:
         for deviation in deviations:
