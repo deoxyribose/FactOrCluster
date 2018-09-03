@@ -44,29 +44,34 @@ if __name__ == '__main__':
     N = 1000
     Ntest = 1000
 
-    n_features = 4
+    n_features = 2
     n_clusters = 4
-    n_restarts = 10
-    n_datasets = 10
+    n_restarts = 5
+    n_datasets = 3
 
     #deviations = np.logspace(-3,1,5, dtype='float32')
-    deviations = np.logspace(-1,1,5, dtype='float32')
+    deviations = np.logspace(-1,1,3, dtype='float32')
 
     models = []
     models.append(Mapper(mixtureOfGaussians, 'mog', observed_variable_names=['data'], n_observations=N, n_components=4, n_features=n_features))        
     models.append(Mapper(centeredIndependentFactorAnalysis, 'cifa', observed_variable_names=['data'], n_observations=N, n_components_in_mixture = 2, n_sources=2, n_features=n_features))
     model_names = [model.model_name for model in models]
-    data_generating_models = model_names
+    data_generating_models = ['mog']
     
     test_models = [mixtureOfGaussiansTest,centeredIndependentFactorAnalysisTest]
     train_neg_log_lik_op = []
     test_neg_log_lik_op = []
+    ppc_op = []
+    loss = {}
+    opt = {}
+
     data_train = tf.placeholder(shape=(N,n_features), dtype='float32') 
     data_test = tf.placeholder(shape=(Ntest,n_features), dtype='float32')
     for model, test_model in zip(models, test_models):
         train_neg_log_lik_op.append(neg_log_lik(model.variables,test_model,data_train))
         test_neg_log_lik_op.append(neg_log_lik(model.variables,test_model,data_test))
-
+        ppc_op.append(MAP_model(model.variables,test_model,N))
+        loss[model.model_name], opt[model.model_name] = model.map_optimizer(data=data_train)
     cluster_centers = tf.placeholder(shape=(n_clusters,n_features), dtype='float32')
     ica_directions = tf.placeholder(shape=(2,n_features), dtype='float32')
     assign_defaults = [None,None]
@@ -76,47 +81,52 @@ if __name__ == '__main__':
     
     experimental_variable_prealloc = np.zeros((len(data_generating_models), len(models), len(deviations), n_restarts, n_datasets))
     experimental_variable_dims = ['data_generating_model','model', 'deviation', 'restart', 'dataset']
-    experimental_variable_coords ={'data_generating_model': model_names, 'model': model_names, 'deviation': deviations, 'restart': range(n_restarts), 'dataset': range(n_datasets)}
+    experimental_variable_coords ={'data_generating_model': data_generating_models, 'model': model_names, 'deviation': deviations, 'restart': range(n_restarts), 'dataset': range(n_datasets)}
                                               
     train_neg_log_joint = xr.DataArray(experimental_variable_prealloc,dims=experimental_variable_dims,coords=experimental_variable_coords)
     train_neg_log_lik = train_neg_log_joint.copy()
     test_neg_log_lik = train_neg_log_joint.copy()
     MAP_parameters = {}
+    ppc = {}
+    data_store = {}
 
     placeholder_deviation = tf.placeholder(dtype='float32')
 
     fica = FastICA(n_components=2)
     kmeans = KMeans(n_clusters=n_clusters)
 
+
+    all_init = tf.global_variables_initializer()
     for data_generating_model in data_generating_models:
         if data_generating_model == 'mog':
             with tape() as reference_tf:
-                data_tf = centeredIndependentFactorAnalysis(n_observations=N + Ntest, n_components_in_mixture = n_clusters, n_sources=n_clusters, n_features=n_features, data_std_rate=placeholder_deviation)
+                data_tf = mixtureOfGaussians(n_observations=N + Ntest, n_components=n_clusters, n_features=n_features, mixture_component_means_std=placeholder_deviation)
         else:
             with tape() as reference_tf:
-                data_tf = mixtureOfGaussians(n_observations=N + Ntest, n_components=n_clusters, n_features=n_features, mixture_component_means_std=placeholder_deviation)
-
+                data_tf = centeredIndependentFactorAnalysis(n_observations=N + Ntest, n_components_in_mixture = n_clusters, n_sources=n_clusters, n_features=n_features, data_std_rate=placeholder_deviation)
+        #tf.get_default_graph().finalize()
         with tf.Session() as sess:
             for deviation in deviations:
                 for dataset in range(n_datasets):
                     data, reference = sess.run([data_tf, reference_tf], feed_dict={placeholder_deviation: deviation})
                     
-                    loss = {}
-                    opt = {}
                     kmeans_cluster_centers = kmeans.fit(data[:N]).cluster_centers_
                     fica_directions = fica.fit(data).mixing_.T
-                    for model in models: 
-                        loss[model.model_name], opt[model.model_name] = model.map_optimizer(data=data[:N])
+
 
                     for restart in range(n_restarts):        
-                        sess.run(tf.global_variables_initializer())
+                        sess.run(all_init)
                         sess.run(assign_defaults, feed_dict={cluster_centers: kmeans_cluster_centers, ica_directions: fica_directions})
                         for i,model in enumerate(models): 
-                            opt[model.model_name].minimize()
-                            MAP_parameter, converged_loss = sess.run([model.variables, loss[model.model_name]])
+                            print('x={},d={},r={},i={}'.format(deviation, dataset, restart, i))
+                            opt[model.model_name].minimize(feed_dict={data_train: data[:N]})
+                            MAP_parameter, converged_loss = sess.run([model.variables, loss[model.model_name]], feed_dict={data_train: data[:N]})
                             MAP_parameters[(data_generating_model,model.model_name, deviation, restart, dataset)] = MAP_parameter
-                            train_neg_log_joint.loc[{'data_generating_model': model.model_name, 'model': model.model_name, 'deviation': deviation, 'restart': restart, 'dataset': dataset}] = converged_loss
-                            train_neg_log_lik.loc[{'data_generating_model': model.model_name, 'model': model.model_name, 'deviation': deviation, 'restart': restart, 'dataset': dataset}] = sess.run(train_neg_log_lik_op[i], feed_dict={data_train: data[:N]})
-                            test_neg_log_lik.loc[{'data_generating_model': model.model_name, 'model': model.model_name, 'deviation': deviation, 'restart': restart, 'dataset': dataset}] = sess.run(test_neg_log_lik_op[i], feed_dict={data_test: data[N:]})
-
+                            ppc[(data_generating_model,model.model_name, deviation, restart, dataset)] = sess.run(ppc_op[i])
+                            data_store[(data_generating_model,model.model_name, deviation, restart, dataset)] = data[:N]
+                            train_neg_log_joint.loc[{'data_generating_model': data_generating_model, 'model': model.model_name, 'deviation': deviation, 'restart': restart, 'dataset': dataset}] = converged_loss
+                            train_neg_log_lik.loc[{'data_generating_model': data_generating_model, 'model': model.model_name, 'deviation': deviation, 'restart': restart, 'dataset': dataset}] = sess.run(train_neg_log_lik_op[i], feed_dict={data_train: data[:N]})
+                            test_neg_log_lik.loc[{'data_generating_model': data_generating_model, 'model': model.model_name, 'deviation': deviation, 'restart': restart, 'dataset': dataset}] = sess.run(test_neg_log_lik_op[i], feed_dict={data_test: data[N:]})
+                            
 pickle.dump([MAP_parameters,train_neg_log_joint,train_neg_log_lik,test_neg_log_lik],open( "mog_ifa_MAPparamaters_and_losses_on_synth_data.p", "wb" ) )
+pickle.dump([ppc, data_store],open( "mog_ifa_MAP_ppc.p", "wb" ) )
