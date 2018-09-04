@@ -103,7 +103,7 @@ if __name__ == '__main__':
                 data_tf = mixtureOfGaussians(n_observations=N + Ntest, n_components=n_clusters, n_features=n_features, mixture_component_means_var=placeholder_deviation)
         else:
             with tape() as reference_tf:
-                data_tf = centeredIndependentFactorAnalysis(n_observations=N + Ntest, n_components_in_mixture = n_clusters, n_sources=n_clusters, n_features=n_features, data_var_rate=placeholder_deviation)
+                data_tf = centeredIndependentFactorAnalysis(n_observations=N + Ntest, n_components_in_mixture = n_clusters, n_sources=n_clusters, n_features=n_features, mixture_component_var_rate=placeholder_deviation)
         #tf.get_default_graph().finalize()
         with tf.Session() as sess:
             for deviation in deviations:

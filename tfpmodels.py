@@ -18,7 +18,7 @@ def independentFactorAnalysis(n_observations = 1000, n_components_in_mixture = 2
             components_distribution=tfd.Normal(loc=tf.zeros_like(mixture_component_var), scale=tf.sqrt(mixture_component_var), name='mixture_component')),
         reinterpreted_batch_ndims=1,sample_shape=(n_observations,),name='sources')
     factor_loadings = ed.Normal(loc=0., scale=1., sample_shape=(n_sources, n_features), name='factor_loadings')
-    data_mean = tf.matmul(sources, factor_loadings, name='data_mean')
+    data_mean = tf.matmul(sources, factor_loadings/tf.linalg.norm(factor_loadings), name='data_mean')
     data_var = ed.Gamma(concentration=data_var_concentration, rate=data_var_rate, sample_shape=(1,n_features), name='data_var')
     data = ed.Normal(loc=data_mean, scale=tf.sqrt(data_var), name='data')  
     return data
@@ -34,7 +34,7 @@ def centeredIndependentFactorAnalysis(n_observations = 1000, n_components_in_mix
             components_distribution=tfd.Normal(loc=tf.zeros_like(mixture_component_var), scale=tf.sqrt(mixture_component_var), name='mixture_component')),
         reinterpreted_batch_ndims=1,sample_shape=(n_observations,),name='sources')
     factor_loadings = ed.Normal(loc=0., scale=1., sample_shape=(n_sources, n_features), name='factor_loadings')
-    data_mean = tf.matmul(sources, factor_loadings, name='data_mean')
+    data_mean = tf.matmul(sources, factor_loadings/tf.linalg.norm(factor_loadings, axis=1, keepdims=True), name='data_mean')
     data_var = ed.Gamma(concentration=data_var_concentration, rate=data_var_rate, sample_shape=(1,n_features), name='data_var')
     data = ed.Normal(loc=data_mean, scale=tf.sqrt(data_var), name='data')  
     return data
@@ -75,7 +75,7 @@ def centeredIndependentFactorAnalysisTest(n_observations, mc_samples, factor_loa
             mixture_distribution=tfd.Categorical(probs=mixture_weights),
             components_distribution=tfd.Normal(loc=tf.zeros_like(mixture_component_var), scale=tf.sqrt(mixture_component_var), name='mixture_component')),
         reinterpreted_batch_ndims=1,sample_shape=(mc_samples, n_observations),name='sources')
-    data_mean = tf.einsum('bik,kj->ijb', sources, factor_loadings, name='data_mean')
+    data_mean = tf.einsum('bik,kj->ijb', sources, factor_loadings/tf.linalg.norm(factor_loadings), name='data_mean')
     data = ed.MixtureSameFamily(
                 mixture_distribution=tfd.Categorical(probs=tf.ones(mc_samples)/mc_samples),
                 components_distribution=tfd.Normal(loc=data_mean, scale=tf.sqrt(data_var[:,:,None]), name='data'), name='mc_approx')
