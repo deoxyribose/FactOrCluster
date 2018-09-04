@@ -76,7 +76,7 @@ if __name__ == '__main__':
     ica_directions = tf.placeholder(shape=(2,n_features), dtype='float32')
     assign_defaults = [None,None]
     assign_defaults[0] = models[0].assigner(mixture_component_covariances_cholesky=10*tf.tile(tf.eye(n_features)[None],[n_clusters,1,1]),mixture_component_means=cluster_centers)
-    assign_defaults[1] = models[1].assigner(data_std=1e-3*tf.ones((1,n_features)), factor_loadings=ica_directions)
+    assign_defaults[1] = models[1].assigner(data_var=1e-3*tf.ones((1,n_features)), factor_loadings=ica_directions)
 
     
     experimental_variable_prealloc = np.zeros((len(data_generating_models), len(models), len(deviations), n_restarts, n_datasets))
@@ -100,10 +100,10 @@ if __name__ == '__main__':
     for data_generating_model in data_generating_models:
         if data_generating_model == 'mog':
             with tape() as reference_tf:
-                data_tf = mixtureOfGaussians(n_observations=N + Ntest, n_components=n_clusters, n_features=n_features, mixture_component_means_std=placeholder_deviation)
+                data_tf = mixtureOfGaussians(n_observations=N + Ntest, n_components=n_clusters, n_features=n_features, mixture_component_means_var=placeholder_deviation)
         else:
             with tape() as reference_tf:
-                data_tf = centeredIndependentFactorAnalysis(n_observations=N + Ntest, n_components_in_mixture = n_clusters, n_sources=n_clusters, n_features=n_features, data_std_rate=placeholder_deviation)
+                data_tf = centeredIndependentFactorAnalysis(n_observations=N + Ntest, n_components_in_mixture = n_clusters, n_sources=n_clusters, n_features=n_features, data_var_rate=placeholder_deviation)
         #tf.get_default_graph().finalize()
         with tf.Session() as sess:
             for deviation in deviations:
