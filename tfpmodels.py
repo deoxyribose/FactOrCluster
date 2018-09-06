@@ -88,10 +88,11 @@ def centeredIndependentFactorAnalysisTest2(n_observations, factor_loadings, mixt
             components_distribution=tfd.Normal(loc=tf.zeros_like(mixture_component_var), scale=tf.sqrt(mixture_component_var), name='mixture_component')),
         reinterpreted_batch_ndims=1,sample_shape=(n_observations, ),name='sources')
     #data_mean = tf.einsum('ik,kj->ij', sources, factor_loadings, name='data_mean')
-    data_mean = tf.matmul(sources, factor_loadings/tf.linalg.norm(factor_loadings, axis=1), name='data_mean')
+    data_mean = tf.matmul(sources, factor_loadings/tf.linalg.norm(factor_loadings, axis=1, keepdims=True), name='data_mean')
     #data_mean = tf.einsum('ik,kj->ij', sources, factor_loadings/tf.linalg.norm(factor_loadings, axis=1), name='data_mean')
     data = ed.Normal(loc=data_mean, scale=tf.sqrt(data_var), name='data')  
     return data, sources
+
 
 def mixtureOfGaussiansTest(n_observations, mixture_weights, mixture_component_means, mixture_component_covariances_cholesky):
     return ed.MixtureSameFamily(
