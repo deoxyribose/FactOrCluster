@@ -93,6 +93,7 @@ def centeredIndependentFactorAnalysisTest2(n_observations, factor_loadings, mixt
     data = ed.Normal(loc=data_mean, scale=tf.sqrt(data_var), name='data')  
     return data, sources, data_mean
 
+
 def mixtureOfGaussiansTest(n_observations, mixture_weights, mixture_component_means, mixture_component_covariances_cholesky):
     return ed.MixtureSameFamily(
                 mixture_distribution=tfd.Categorical(probs=mixture_weights),
