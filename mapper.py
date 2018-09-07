@@ -44,9 +44,13 @@ class Mapper:
     def map_neg_log_joint_fn(self, **kwargs):
         return -self.log_joint_fn(*self._args, **self._kwargs, **self.variables, **kwargs)
 
-    def map_optimizer(self, **kwargs):
+    def bfgs_optimizer(self, **kwargs):
         map_neg_log_joint = self.map_neg_log_joint_fn(**kwargs)
         return map_neg_log_joint, tf.contrib.opt.ScipyOptimizerInterface(map_neg_log_joint, self.unconstrained_variables.values())
+
+    def adam_optimizer(self, learning_rate = 0.005, **kwargs):
+        map_neg_log_joint = self.map_neg_log_joint_fn(**kwargs)
+        return map_neg_log_joint, tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(map_neg_log_joint)
 
     def assigner(self, **kwargs):
         assign_ops = []
