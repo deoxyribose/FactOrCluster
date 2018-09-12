@@ -66,8 +66,10 @@ def plot_ifa_parameters_and_ppc(estimated_parameters, true_parameters, sess):
     plt.show()
 
     fig, ax = plt.subplots()
-    plt.title('Estimated data_mean')
+    plt.title('True and estimated data_mean')
     data_mean_s = sess.run(tf.squeeze(data_mean))
+    true_data_mean = np.einsum('ik,kj->ij', true_parameters['sources'], true_parameters['factor_loadings']/np.linalg.norm(true_parameters['factor_loadings'], axis=1, keepdims=True))
+    plt.scatter(*true_data_mean.T)
     plt.scatter(*data_mean_s.T)
     ax.set_xlim(xlim)
     ax.set_ylim(ylim)
