@@ -7,6 +7,10 @@ import numpy as np
 
 from future_features import tape, SoftmaxCentered
 
+def softplus_and_shift_1e05(x):
+    return tfp.trainable_distributions.softplus_and_shift(x,shift=1e-05)
+
+
 class Mapper:
     _positive_distributions = [tfd.InverseGamma, tfd.Gamma]
     _simplex_distributions = [tfd.Dirichlet]
@@ -33,7 +37,8 @@ class Mapper:
     def get_bijector(self, random_variable):
         distribution = random_variable.distribution
         if distribution.__class__ in self._positive_distributions:
-            return tfb.Softplus() #tfp.trainable_distributions.softplus_and_shift(variable)
+            #return tfb.Softplus() #tfp.trainable_distributions.softplus_and_shift(variable)
+            return tfb.Chain([tfb.Affine(shift=1e-06), tfb.Softplus()], name="softplus_and_shift")
         elif distribution.__class__ in self._simplex_distributions:
             return SoftmaxCentered()
         elif distribution.__class__ in self._tril_distributions:
@@ -47,6 +52,14 @@ class Mapper:
     def bfgs_optimizer(self, **kwargs):
         map_neg_log_joint = self.map_neg_log_joint_fn(**kwargs)
         return map_neg_log_joint, tf.contrib.opt.ScipyOptimizerInterface(map_neg_log_joint, self.unconstrained_variables.values())
+
+    def l_bfgs_optimizer(self, **kwargs):
+        map_neg_log_joint = self.map_neg_log_joint_fn(**kwargs)
+        return map_neg_log_joint, tf.contrib.opt.ScipyOptimizerInterface(map_neg_log_joint, self.unconstrained_variables.values(), method='L-BFGS-B')
+
+    def cg_optimizer(self, **kwargs):
+        map_neg_log_joint = self.map_neg_log_joint_fn(**kwargs)
+        return map_neg_log_joint, tf.contrib.opt.ScipyOptimizerInterface(map_neg_log_joint, self.unconstrained_variables.values(), method='CG')
 
     def adam_optimizer(self, learning_rate = 0.005, **kwargs):
         map_neg_log_joint = self.map_neg_log_joint_fn(**kwargs)

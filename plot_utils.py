@@ -6,15 +6,23 @@ import numpy as np
 import matplotlib.pylab as plt
 from tfpmodels import centeredIndependentFactorAnalysisTest
 
-def plot_source_distributions(mixture_component_var,sess):
-    n_sources,n_components_in_mixture = mixture_component_var.shape
-    batch_event_space = np.stack((n_sources*n_components_in_mixture)*[np.linspace(-6,6,1000).astype(np.float32)],axis=1).reshape(-1,n_sources,n_components_in_mixture)
-    densities = sess.run(tfd.Normal(loc=0.,scale=tf.sqrt(mixture_component_var)).prob(batch_event_space))
-    for i in range(n_sources):
-        plt.show()
-        for j in range(n_components_in_mixture):
-            plt.plot(batch_event_space[:,i,j],densities[:,i,j])
-    plt.show()
+def plot_source_distributions(mixture_component_var,mixture_weights,sess):
+	n_sources,n_components_in_mixture = mixture_component_var.shape
+	batch_event_space = np.stack((n_sources*n_components_in_mixture)*[np.linspace(-6,6,1000).astype(np.float32)],axis=1).reshape(-1,n_sources,n_components_in_mixture)
+	component_densities = sess.run(tfd.Normal(loc=0.,scale=tf.sqrt(mixture_component_var)).prob(batch_event_space))
+	mixture_densities = np.zeros((1000,n_sources))
+	for i in range(n_sources):
+	    plt.show()
+	    for j in range(n_components_in_mixture):
+	        mixture_densities[:,i] += component_densities[:,i,j]*mixture_weights[i,j]
+	    fig, ax = plt.subplots()
+	    plt.plot(batch_event_space[:,i,j],mixture_densities[:,i])
+	    if i==0:
+	        xlim = ax.get_xlim()
+	        ylim = ax.get_ylim()
+	    ax.set_xlim(xlim)
+	    ax.set_ylim(ylim)
+	plt.show()
 
 def plot_ifa_parameters_and_ppc(estimated_parameters, true_parameters, sess):
     map_estimates = dict(estimated_parameters)
@@ -31,8 +39,11 @@ def plot_ifa_parameters_and_ppc(estimated_parameters, true_parameters, sess):
     #print(sess.run(source.distribution.sample((5000))).var(0))
     ppc = sess.run(testmodel.distribution.sample())
 
-    #plot_source_distributions(true_parameters['mixture_component_var'],sess)
-    #plot_source_distributions(map_estimates['mixture_component_var'],sess)
+    #plt.title('True source distributions')
+    plot_source_distributions(true_parameters['mixture_component_var'],true_parameters['mixture_weights'],sess)
+    #plt.title('Estimated source distributions')
+    plot_source_distributions(map_estimates['mixture_component_var'],map_estimates['mixture_weights'],sess)
+    
     fig, ax = plt.subplots()
     plt.title('Variance of sample is {}'.format(true_parameters['data'].var()))
     plt.scatter(*true_parameters['data'].T,alpha=.5)
