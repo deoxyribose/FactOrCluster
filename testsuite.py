@@ -128,5 +128,5 @@ if __name__ == '__main__':
                             train_neg_log_lik.loc[{'data_generating_model': data_generating_model, 'model': model.model_name, 'deviation': deviation, 'restart': restart, 'dataset': dataset}] = sess.run(train_neg_log_lik_op[i], feed_dict={data_train: data[:N]})
                             test_neg_log_lik.loc[{'data_generating_model': data_generating_model, 'model': model.model_name, 'deviation': deviation, 'restart': restart, 'dataset': dataset}] = sess.run(test_neg_log_lik_op[i], feed_dict={data_test: data[N:]})
                             
-pickle.dump([MAP_parameters,train_neg_log_joint,train_neg_log_lik,test_neg_log_lik],open( "mog_ifa_MAPparamaters_and_losses_on_synth_data.p", "wb" ) )
-pickle.dump([ppc, data_store],open( "mog_ifa_MAP_ppc.p", "wb" ) )
+    pickle.dump([MAP_parameters,train_neg_log_joint,train_neg_log_lik,test_neg_log_lik],open( "mog_ifa_MAPparamaters_and_losses_on_synth_data.p", "wb" ) )
+    pickle.dump([ppc, data_store],open( "mog_ifa_MAP_ppc.p", "wb" ) )
