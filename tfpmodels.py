@@ -41,6 +41,25 @@ def centeredIndependentFactorAnalysis(n_observations = 1000, n_components_in_mix
     return data
 
 def centeredMarginalizedIndependentFactorAnalysis(n_observations = 1000, n_sources = 2, n_components_in_mixture=2, n_features = 2, mixture_component_var_concentration = 1., mixture_component_var_rate=1.,mixture_weights_concentration=None,data_var_concentration=1.,data_var_rate=1.):
+    """
+    An independent factor analysis with latent source variables marginalized out.
+    Consider regular centered ifa, with joint probablility
+            p(data | w, z, pi, s_source, s_obs)p(z|pi, s_source)p(pi)p(s_source)p(s_obs)p(w)
+        where
+            p(data | w, z, s_source, s_obs) = N(w*z, diag(s_obs)),
+            p(z|pi, s_source)               = prod(sum(pi*N(0,s_source), n_components_in_mixture), n_sources)
+            p(s_source)                     = prod(prod(Gamma(a,b), n_components_in_mixture, n_sources)
+            p(pi)                           = prod(Dirichlet(alpha), n_sources)
+            p(s_obs)                        = prod(Gamma(a',b'), n_features)
+            p(w)                            = prod(N(0,1), n_sources)
+
+    We want to integrate it over sources z, which means integrating over all combinations of 
+        int dz*p(data | w, z, s_source, s_obs)p(z|s_source)p(s_source)p(s_obs)p(w)
+        = p(data | w, s_source, s_obs)p(s_source)p(s_obs)p(w)
+    
+    We exploit the fact that 
+        N(W*z,s_obs)N(0,s_source)N(0,s_obs) = N(0,WSW^T+D)
+    """
     if mixture_weights_concentration is None:
         mixture_weights_concentration = np.ones(n_components_in_mixture, dtype='float32')
     combinations = tf.one_hot(np.array(list(
