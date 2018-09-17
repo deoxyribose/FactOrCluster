@@ -41,35 +41,28 @@ def centeredIndependentFactorAnalysis(n_observations = 1000, n_components_in_mix
     return data
 
 def centeredMarginalizedIndependentFactorAnalysis(n_observations = 1000, n_sources = 2, n_components_in_mixture=2, n_features = 2, mixture_component_var_concentration = 1., mixture_component_var_rate=1.,mixture_weights_concentration=None,data_var_concentration=1.,data_var_rate=1.):
-    if n_components_in_mixture != 2:
-        raise NotImplementedError
     if mixture_weights_concentration is None:
         mixture_weights_concentration = np.ones(n_components_in_mixture, dtype='float32')
-    combinations = np.array(list(product([0,1], repeat=n_sources))).astype('float32')
+    combinations = tf.one_hot(np.array(list(
+        product(range(n_components_in_mixture), repeat=n_sources))).astype('float32'), 
+        depth=n_components_in_mixture) # combinations x sources x component indicator
     n_combinations = combinations.shape[0]
-    data_var = ed.Gamma(concentration=data_var_concentration, rate=data_var_rate, sample_shape=(1,n_features), name='data_var')
     mixture_component_var = ed.Gamma(concentration=mixture_component_var_concentration, rate=mixture_component_var_rate, sample_shape=(n_sources,n_components_in_mixture), name='mixture_component_var')
     mixture_weights = ed.Dirichlet(concentration=mixture_weights_concentration, sample_shape=(n_sources,), name='mixture_weights')
-
     factor_loadings = ed.Normal(loc=0., scale=1., sample_shape=(n_sources, n_features), name='factor_loadings')
-    all_mixture_weights = tf.reduce_prod(mixture_weights[:,0][None,:] ** (1 - combinations) * mixture_weights[:,1][None,:] ** combinations, axis=1)   
-    all_mixture_vars = tf.matmul(combinations, tf.reshape(mixture_component_var[:,1] - mixture_component_var[:,0],(-1,1))) + mixture_component_var[:,0] 
+    data_var = ed.Gamma(concentration=data_var_concentration, rate=data_var_rate, sample_shape=(1,n_features), name='data_var')
+    
+    all_mixture_weights = tf.reduce_prod(tf.reduce_sum(combinations * mixture_weights[None, :, :], axis=-1), axis=1)
+    all_mixture_vars = tf.reduce_sum(combinations * mixture_component_var[None, :, :], axis=-1)
+    
     data = ed.MixtureSameFamily(
         mixture_distribution=tfd.Categorical(probs=all_mixture_weights),
         components_distribution=tfd.MultivariateNormalDiagPlusLowRank(loc=tf.zeros((n_combinations, n_features)), 
-        scale_perturb_diag=all_mixture_vars, 
+        scale_perturb_diag=1e-3+all_mixture_vars, 
         scale_perturb_factor=tf.tile(tf.transpose(factor_loadings)[None,:,:], [n_combinations, 1, 1]) , 
         scale_diag=tf.tile(data_var, [n_combinations, 1]), name='data_component'), sample_shape=(n_observations,), name='data')  
-
-#    sources = ed.Independent(
-#        tfd.MixtureSameFamily(
-#            mixture_distribution=tfd.Categorical(probs=mixture_weights),
-#            components_distribution=tfd.Normal(loc=tf.zeros_like(mixture_component_var), scale=tf.sqrt(mixture_component_var), name='mixture_component')),
-#        reinterpreted_batch_ndims=1,sample_shape=(n_observations,),name='sources')
-    
-    #data_mean = tf.matmul(sources, factor_loadings/tf.linalg.norm(factor_loadings, axis=1, keepdims=True), name='data_mean')
-    #data = ed.Normal(loc=data_mean, scale=tf.sqrt(data_var), name='data')  
     return data
+    #, combinations, all_mixture_weights, all_mixture_vars
 
 
 
@@ -138,14 +131,19 @@ def mixtureOfGaussiansTest(n_observations, mixture_weights, mixture_component_me
 
 def centeredMarginalizedIndependentFactorAnalysisTest(n_observations, mixture_weights, mixture_component_var, factor_loadings, data_var):
     n_sources, n_features = factor_loadings.shape
-    combinations = np.array(list(product([0,1], repeat=n_sources))).astype('float32')
+    n_components_in_mixture = mixture_weights.shape[1]
+    combinations = tf.one_hot(np.array(list(
+        product(range(n_components_in_mixture), repeat=n_sources))).astype('float32'), 
+        depth=n_components_in_mixture) # combinations x sources x component indicator
     n_combinations = combinations.shape[0]
-    all_mixture_weights = tf.reduce_prod(mixture_weights[:,0][None,:] ** (1 - combinations) * mixture_weights[:,1][None,:] ** combinations, axis=1)   
-    all_mixture_vars = tf.matmul(combinations, tf.reshape(mixture_component_var[:,1] - mixture_component_var[:,0],(-1,1))) + mixture_component_var[:,0] 
+
+    all_mixture_weights = tf.reduce_prod(tf.reduce_sum(combinations * mixture_weights[None, :, :], axis=-1), axis=1)
+    all_mixture_vars = tf.reduce_sum(combinations * mixture_component_var, axis=-1)
+    
     data = ed.MixtureSameFamily(
         mixture_distribution=tfd.Categorical(probs=all_mixture_weights),
         components_distribution=tfd.MultivariateNormalDiagPlusLowRank(loc=tf.zeros((n_combinations, n_features)), 
-        scale_perturb_diag=all_mixture_vars, 
+        scale_perturb_diag=1e-3+all_mixture_vars, 
         scale_perturb_factor=tf.tile(tf.transpose(factor_loadings)[None,:,:], [n_combinations, 1, 1]) , 
         scale_diag=tf.tile(data_var, [n_combinations, 1]), name='data_component'), sample_shape=(n_observations,), name='data')  
     return data
