@@ -55,21 +55,30 @@ def centeredMarginalizedIndependentFactorAnalysis(n_observations = 1000, n_sourc
     mixture_weights = ed.Dirichlet(concentration=mixture_weights_concentration, sample_shape=(n_sources,), name='mixture_weights')
     factor_loadings = ed.Normal(loc=0., scale=1., sample_shape=(n_sources, n_features), name='factor_loadings')
     factor_loadings /= tf.linalg.norm(factor_loadings, axis=1, keepdims=True)
-    data_var = ed.Gamma(concentration=data_var_concentration, rate=data_var_rate, sample_shape=(1,n_features), name='data_var')
+    data_var = ed.Gamma(concentration=data_var_concentration, rate=data_var_rate, sample_shape=(n_features,), name='data_var')
     
     all_mixture_weights = tf.reduce_prod(tf.reduce_sum(combinations * mixture_weights[None, :, :], axis=-1), axis=1)
     all_mixture_vars = tf.reduce_sum(combinations * mixture_component_var[None, :, :], axis=-1)
-    
+
     data = ed.MixtureSameFamily(
         mixture_distribution=tfd.Categorical(probs=all_mixture_weights),
-        components_distribution=tfd.MultivariateNormalDiagPlusLowRank(loc=tf.zeros((n_combinations, n_features)), 
-        scale_perturb_diag=None,#jitter + all_mixture_vars, 
-        # set to None in order to use cholesky to find determinants when calculating gradients
-        # for justification, see line 253 in https://github.com/tensorflow/tensorflow/blob/r1.10/tensorflow/contrib/distributions/python/ops/mvn_diag_plus_low_rank.py
-        # and line 201 in https://github.com/tensorflow/tensorflow/blob/r1.10/tensorflow/python/ops/linalg/linear_operator_low_rank_update.py
-        scale_perturb_factor=tf.einsum('sf,cs->cfs', factor_loadings, tf.sqrt(all_mixture_vars)), #tf.tile(tf.transpose(factor_loadings)[None,:,:], [n_combinations, 1, 1]) , 
-        scale_diag=jitter + tf.tile(data_var, [n_combinations, 1]), name='data_component'), sample_shape=(n_observations,), name='data')  
+        components_distribution=tfd.MultivariateNormalTriL(
+            loc=tf.zeros((n_combinations, n_features)),
+            scale_tril=tf.linalg.cholesky(tf.reduce_sum(tf.einsum('sf,cs,sg->scfg', factor_loadings, all_mixture_vars, factor_loadings), axis=0) + tf.diag(data_var)[None,:,:]),
+            name='data_component'),
+            sample_shape=(n_observations,), name='data')   
     return data
+
+#    data = ed.MixtureSameFamily(
+#        mixture_distribution=tfd.Categorical(probs=all_mixture_weights),
+#        components_distribution=tfd.MultivariateNormalDiagPlusLowRank(loc=tf.zeros((n_combinations, n_features)), 
+#        scale_perturb_diag=None,#jitter + all_mixture_vars, 
+#        # set to None in order to use cholesky to find determinants when calculating gradients
+#        # for justification, see line 253 in https://github.com/tensorflow/tensorflow/blob/r1.10/tensorflow/contrib/distributions/python/ops/mvn_diag_plus_low_rank.py
+#        # and line 201 in https://github.com/tensorflow/tensorflow/blob/r1.10/tensorflow/python/ops/linalg/linear_operator_low_rank_update.py
+#        scale_perturb_factor=tf.einsum('sf,cs->cfs', factor_loadings, tf.sqrt(all_mixture_vars)), #tf.tile(tf.transpose(factor_loadings)[None,:,:], [n_combinations, 1, 1]) , 
+#        scale_diag=jitter + tf.tile(data_var, [n_combinations, 1]), name='data_component'), sample_shape=(n_observations,), name='data')  
+#    return data
 
 def mixtureOfGaussians(n_observations = 1000, n_components = 2, n_features = 2, mixture_component_means_mean = 0., mixture_component_means_var = 1., mixture_component_covariances_cholesky_df = None, mixture_component_covariances_cholesky_scale_tril=None,mixture_weights_concentration=None):
     if mixture_weights_concentration is None:
@@ -179,14 +188,23 @@ def centeredMarginalizedIndependentFactorAnalysisTest(n_observations, mixture_we
     all_mixture_weights = tf.reduce_prod(tf.reduce_sum(combinations * mixture_weights[None, :, :], axis=-1), axis=1)
     all_mixture_vars = tf.reduce_sum(combinations * mixture_component_var, axis=-1)
     factor_loadings /= tf.linalg.norm(factor_loadings, axis=1, keepdims=True)
-    
+
     data = ed.MixtureSameFamily(
         mixture_distribution=tfd.Categorical(probs=all_mixture_weights),
-        components_distribution=tfd.MultivariateNormalDiagPlusLowRank(loc=tf.zeros((n_combinations, n_features)), 
-        scale_perturb_diag=jitter + all_mixture_vars, 
-        scale_perturb_factor=tf.tile(tf.transpose(factor_loadings)[None,:,:], [n_combinations, 1, 1]) , 
-        scale_diag=jitter + tf.tile(data_var, [n_combinations, 1]), name='data_component'), sample_shape=(n_observations,), name='data')  
+        components_distribution=tfd.MultivariateNormalTriL(
+            loc=tf.zeros((n_combinations, n_features)),
+            scale_tril=tf.linalg.cholesky(tf.einsum('sf,cs,sg->cfg', factor_loadings, all_mixture_vars, factor_loadings) + tf.diag(data_var)[None,:,:]),
+            name='data_component'),
+            sample_shape=(n_observations,), name='data')   
     return data
+
+#    data = ed.MixtureSameFamily(
+#        mixture_distribution=tfd.Categorical(probs=all_mixture_weights),
+#        components_distribution=tfd.MultivariateNormalDiagPlusLowRank(loc=tf.zeros((n_combinations, n_features)), 
+#        scale_perturb_diag=jitter + all_mixture_vars, 
+#        scale_perturb_factor=tf.tile(tf.transpose(factor_loadings)[None,:,:], [n_combinations, 1, 1]) , 
+#        scale_diag=jitter + tf.tile(data_var, [n_combinations, 1]), name='data_component'), sample_shape=(n_observations,), name='data')  
+#    return data
 
 # hyperparameters as dict
 #def centeredIndependentFactorAnalysis(n_observations = 1000, n_components_in_mixture = 2, n_sources = 2, n_features = 2, hyperparameters = {'mixture_component_var_rate':1.,'mixture_weights_concentration':1.,'data_var_concentration':1.,'data_var_rate':1.}):
