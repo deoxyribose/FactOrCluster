@@ -44,25 +44,7 @@ def centeredIndependentFactorAnalysis(n_observations = 1000, n_components_in_mix
     return data
 
 def centeredMarginalizedIndependentFactorAnalysis(n_observations = 1000, n_sources = 2, n_components_in_mixture=2, n_features = 2, mixture_component_var_concentration = 1., mixture_component_var_rate=1.,mixture_weights_concentration=None,data_var_concentration=1.,data_var_rate=1.):
-    """
-    An independent factor analysis with latent source variables marginalized out.
-    Consider regular centered ifa, with joint probablility
-            p(data | w, z, pi, s_source, s_obs)p(z|pi, s_source)p(pi)p(s_source)p(s_obs)p(w)
-        where
-            p(data | w, z, s_source, s_obs) = N(w*z, diag(s_obs)),
-            p(z|pi, s_source)               = prod(sum(pi*N(0,s_source), n_components_in_mixture), n_sources)
-            p(s_source)                     = prod(prod(Gamma(a,b), n_components_in_mixture, n_sources)
-            p(pi)                           = prod(Dirichlet(alpha), n_sources)
-            p(s_obs)                        = prod(Gamma(a',b'), n_features)
-            p(w)                            = prod(N(0,1), n_sources)
 
-    We want to integrate it over sources z, which means integrating over all combinations of 
-        int dz*p(data | w, z, s_source, s_obs)p(z|s_source)p(s_source)p(s_obs)p(w)
-        = p(data | w, s_source, s_obs)p(s_source)p(s_obs)p(w)
-    
-    We exploit the fact that 
-        N(W*z,s_obs)N(0,s_source)N(0,s_obs) = N(0,WSW^T+D)
-    """
     if mixture_weights_concentration is None:
         mixture_weights_concentration = np.ones(n_components_in_mixture, dtype='float32')
     combinations = tf.one_hot(np.array(list(
@@ -72,6 +54,7 @@ def centeredMarginalizedIndependentFactorAnalysis(n_observations = 1000, n_sourc
     mixture_component_var = ed.Gamma(concentration=mixture_component_var_concentration, rate=mixture_component_var_rate, sample_shape=(n_sources,n_components_in_mixture), name='mixture_component_var')
     mixture_weights = ed.Dirichlet(concentration=mixture_weights_concentration, sample_shape=(n_sources,), name='mixture_weights')
     factor_loadings = ed.Normal(loc=0., scale=1., sample_shape=(n_sources, n_features), name='factor_loadings')
+    factor_loadings /= tf.linalg.norm(factor_loadings, axis=1, keepdims=True)
     data_var = ed.Gamma(concentration=data_var_concentration, rate=data_var_rate, sample_shape=(1,n_features), name='data_var')
     
     all_mixture_weights = tf.reduce_prod(tf.reduce_sum(combinations * mixture_weights[None, :, :], axis=-1), axis=1)
@@ -80,8 +63,11 @@ def centeredMarginalizedIndependentFactorAnalysis(n_observations = 1000, n_sourc
     data = ed.MixtureSameFamily(
         mixture_distribution=tfd.Categorical(probs=all_mixture_weights),
         components_distribution=tfd.MultivariateNormalDiagPlusLowRank(loc=tf.zeros((n_combinations, n_features)), 
-        scale_perturb_diag=jitter + all_mixture_vars, 
-        scale_perturb_factor=tf.tile(tf.transpose(factor_loadings)[None,:,:], [n_combinations, 1, 1]) , 
+        scale_perturb_diag=None,#jitter + all_mixture_vars, 
+        # set to None in order to use cholesky to find determinants when calculating gradients
+        # for justification, see line 253 in https://github.com/tensorflow/tensorflow/blob/r1.10/tensorflow/contrib/distributions/python/ops/mvn_diag_plus_low_rank.py
+        # and line 201 in https://github.com/tensorflow/tensorflow/blob/r1.10/tensorflow/python/ops/linalg/linear_operator_low_rank_update.py
+        scale_perturb_factor=tf.einsum('sf,cs->cfs', factor_loadings, tf.sqrt(all_mixture_vars)), #tf.tile(tf.transpose(factor_loadings)[None,:,:], [n_combinations, 1, 1]) , 
         scale_diag=jitter + tf.tile(data_var, [n_combinations, 1]), name='data_component'), sample_shape=(n_observations,), name='data')  
     return data
 
@@ -144,6 +130,11 @@ def mixtureOfFactorAnalyzers(n_observations = 1000, n_components = 2, n_sources 
         scale_diag=tf.tile(data_var, [n_components, 1]), name='data_component'), sample_shape=(n_observations,), name='data')  
     return data
 
+#####
+# Test functions
+#####
+
+
 def centeredIndependentFactorAnalysisTest(n_observations, mc_samples, factor_loadings, mixture_weights, mixture_component_var, data_var):
     sources = ed.Independent(
         tfd.MixtureSameFamily(
@@ -187,6 +178,7 @@ def centeredMarginalizedIndependentFactorAnalysisTest(n_observations, mixture_we
 
     all_mixture_weights = tf.reduce_prod(tf.reduce_sum(combinations * mixture_weights[None, :, :], axis=-1), axis=1)
     all_mixture_vars = tf.reduce_sum(combinations * mixture_component_var, axis=-1)
+    factor_loadings /= tf.linalg.norm(factor_loadings, axis=1, keepdims=True)
     
     data = ed.MixtureSameFamily(
         mixture_distribution=tfd.Categorical(probs=all_mixture_weights),
