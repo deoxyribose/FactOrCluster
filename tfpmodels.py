@@ -73,7 +73,7 @@ def centeredMarginalizedIndependentFactorAnalysis(n_observations = 1000, n_sourc
     # conditioning of covariance matrices
     largest_magnitude_covariance = tf.reduce_max(tf.abs(covmat),axis=[1,2],keepdims=True)
     covmat /= largest_magnitude_covariance
-    tf.cast(covmat,tf.float64)
+    covmat = tf.cast(covmat,tf.float64)
     #covmat /= tf.Print(largest_magnitude_covariance,[largest_magnitude_covariance],summarize=100,message='\n Normalizing covmats by')
 
     data = ed.MixtureSameFamily(
@@ -105,7 +105,7 @@ def centeredMarginalizedIndependentFactorAnalysisTest(n_observations, mixture_we
     # conditioning of covariance matrices
     largest_magnitude_covariance = tf.reduce_max(tf.abs(covmat),axis=[1,2],keepdims=True)
     covmat /= largest_magnitude_covariance
-    tf.cast(covmat,tf.float64)
+    covmat = tf.cast(covmat,tf.float64)
     #covmat /= tf.Print(largest_magnitude_covariance,[largest_magnitude_covariance],summarize=100,message='\n Normalizing covmats by')
 
     data = ed.MixtureSameFamily(
