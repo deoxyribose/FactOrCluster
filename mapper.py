@@ -38,7 +38,8 @@ class Mapper:
         distribution = random_variable.distribution
         if distribution.__class__ in self._positive_distributions:
             #return tfb.Softplus() #tfp.trainable_distributions.softplus_and_shift(variable)
-            return tfb.Chain([tfb.Affine(shift=1e-06), tfb.Softplus()], name="softplus_and_shift")
+            return tfb.Chain([tfb.AffineScalar(shift=1e-3,scale=1e3), tfb.Sigmoid()], name="scaled_sigmoid")
+            #return tfb.Chain([tfb.Affine(shift=1e-4), tfb.Softplus()], name="softplus_and_shift")
         elif distribution.__class__ in self._simplex_distributions:
             return SoftmaxCentered()
         elif distribution.__class__ in self._tril_distributions:
@@ -51,7 +52,7 @@ class Mapper:
 
     def bfgs_optimizer(self, **kwargs):
         map_neg_log_joint = self.map_neg_log_joint_fn(**kwargs)
-        return map_neg_log_joint, tf.contrib.opt.ScipyOptimizerInterface(map_neg_log_joint, self.unconstrained_variables.values())
+        return map_neg_log_joint, tf.contrib.opt.ScipyOptimizerInterface(map_neg_log_joint, self.unconstrained_variables.values(), method='BFGS')
 
     def l_bfgs_optimizer(self, **kwargs):
         map_neg_log_joint = self.map_neg_log_joint_fn(**kwargs)

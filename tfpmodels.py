@@ -7,7 +7,7 @@ import numpy as np
 from itertools import product
 from future_features import tape
 
-jitter = 1e-8
+jitter = 1e-04
 print(jitter)
 
 def independentFactorAnalysis(n_observations = 1000, n_components_in_mixture = 2, n_sources = 2, n_features = 2, mixture_component_means_mean = 0., mixture_component_means_var = 1., mixture_component_var_concentration = 1., mixture_component_var_rate=1.,mixture_weights_concentration=None,data_var_concentration=1.,data_var_rate=1.):
@@ -43,6 +43,13 @@ def centeredIndependentFactorAnalysis(n_observations = 1000, n_components_in_mix
     data = ed.Normal(loc=data_mean, scale=tf.sqrt(data_var), name='data')  
     return data
 
+
+def condition_number(matrix):
+    singular_values = tf.svd(matrix,compute_uv=False)
+    largest_singular_value = tf.reduce_max(singular_values,axis=1)
+    smallest_singular_value = tf.reduce_max(singular_values,axis=1)
+    return largest_singular_value,smallest_singular_value,largest_singular_value/smallest_singular_value
+
 def centeredMarginalizedIndependentFactorAnalysis(n_observations = 1000, n_sources = 2, n_components_in_mixture=2, n_features = 2, mixture_component_var_concentration = 1., mixture_component_var_rate=1.,mixture_weights_concentration=None,data_var_concentration=1.,data_var_rate=1.):
 
     if mixture_weights_concentration is None:
@@ -60,14 +67,58 @@ def centeredMarginalizedIndependentFactorAnalysis(n_observations = 1000, n_sourc
     all_mixture_weights = tf.reduce_prod(tf.reduce_sum(combinations * mixture_weights[None, :, :], axis=-1), axis=1)
     all_mixture_vars = tf.reduce_sum(combinations * mixture_component_var[None, :, :], axis=-1)
 
+    cov_factor = tf.einsum('sf,cs->csf', factor_loadings, all_mixture_vars)
+    covmat = tf.einsum('csf,csg->cfg', cov_factor, cov_factor) + tf.diag(jitter + data_var)[None,:,:]
+    
+    # conditioning of covariance matrices
+    largest_magnitude_covariance = tf.reduce_max(tf.abs(covmat),axis=[1,2],keepdims=True)
+    covmat /= largest_magnitude_covariance
+    #covmat /= tf.Print(largest_magnitude_covariance,[largest_magnitude_covariance],summarize=100,message='\n Normalizing covmats by')
+
     data = ed.MixtureSameFamily(
         mixture_distribution=tfd.Categorical(probs=all_mixture_weights),
         components_distribution=tfd.MultivariateNormalTriL(
             loc=tf.zeros((n_combinations, n_features)),
-            scale_tril=tf.linalg.cholesky(tf.reduce_sum(tf.einsum('sf,cs,sg->scfg', factor_loadings, all_mixture_vars, factor_loadings), axis=0) + tf.diag(data_var)[None,:,:]),
+            scale_tril=tf.sqrt(largest_magnitude_covariance)*tf.linalg.cholesky(tf.Print(covmat,[covmat],summarize=100)),
+            #scale_tril=tf.sqrt(largest_magnitude_covariance)*tf.linalg.cholesky(tf.Print(covmat,[covmat],summarize=100)),
+            #scale_tril=tf.sqrt(largest_magnitude_covariance)*tf.linalg.cholesky(tf.Print(covmat, [tf.check_numerics(covmat,message='covmat is nan or inf'),'Determinants:',tf.linalg.det(covmat),'max_singvals,min_singvals,cond_numbers::',condition_number(covmat)],summarize=100,message='\n')),
             name='data_component'),
             sample_shape=(n_observations,), name='data')   
     return data
+
+
+def centeredMarginalizedIndependentFactorAnalysisTest(n_observations, mixture_weights, mixture_component_var, factor_loadings, data_var):
+    n_sources, n_features = factor_loadings.shape
+    n_components_in_mixture = mixture_weights.shape[1]
+    combinations = tf.one_hot(np.array(list(
+        product(range(n_components_in_mixture), repeat=n_sources))).astype('float32'), 
+        depth=n_components_in_mixture) # combinations x sources x component indicator
+    n_combinations = combinations.shape[0]
+
+    all_mixture_weights = tf.reduce_prod(tf.reduce_sum(combinations * mixture_weights[None, :, :], axis=-1), axis=1)
+    all_mixture_vars = tf.reduce_sum(combinations * mixture_component_var, axis=-1)
+    factor_loadings /= tf.linalg.norm(factor_loadings, axis=1, keepdims=True)
+    cov_factor = tf.einsum('sf,cs->csf', factor_loadings, all_mixture_vars)
+    covmat = tf.einsum('csf,csg->cfg', cov_factor, cov_factor) + tf.diag(jitter + data_var)[None,:,:]
+    
+    # conditioning of covariance matrices
+    largest_magnitude_covariance = tf.reduce_max(tf.abs(covmat),axis=[1,2],keepdims=True)
+    covmat /= largest_magnitude_covariance
+    #covmat /= tf.Print(largest_magnitude_covariance,[largest_magnitude_covariance],summarize=100,message='\n Normalizing covmats by')
+
+    data = ed.MixtureSameFamily(
+        mixture_distribution=tfd.Categorical(probs=all_mixture_weights),
+        components_distribution=tfd.MultivariateNormalTriL(
+            loc=tf.zeros((n_combinations, n_features)),
+            scale_tril=tf.sqrt(largest_magnitude_covariance)*tf.linalg.cholesky(tf.Print(covmat,[covmat],summarize=100)),
+            #scale_tril=tf.sqrt(largest_magnitude_covariance)*tf.linalg.cholesky(tf.Print(covmat,[covmat],summarize=100)),
+            #scale_tril=tf.sqrt(largest_magnitude_covariance)*tf.linalg.cholesky(tf.Print(covmat, [tf.check_numerics(covmat,message='covmat is nan or inf'),'Determinants:',tf.linalg.det(covmat),'max_singvals,min_singvals,cond_numbers::',condition_number(covmat)],summarize=100,message='\n')),
+            name='data_component'),
+            sample_shape=(n_observations,), name='data')   
+    return data
+
+
+
 
 #    data = ed.MixtureSameFamily(
 #        mixture_distribution=tfd.Categorical(probs=all_mixture_weights),
@@ -91,6 +142,7 @@ def mixtureOfGaussians(n_observations = 1000, n_components = 2, n_features = 2, 
     mixture_component_means = ed.Normal(loc=mixture_component_means_mean, scale=tf.sqrt(mixture_component_means_var), sample_shape=(n_components, n_features), name='mixture_component_means')
     mixture_component_covariances_cholesky = ed.Wishart(
         df=mixture_component_covariances_cholesky_df, scale_tril=mixture_component_covariances_cholesky_scale_tril, sample_shape=(n_components), input_output_cholesky=True, name='mixture_component_covariances_cholesky')
+
     return ed.MixtureSameFamily(
                 mixture_distribution=tfd.Categorical(probs=mixture_weights),
                 components_distribution=tfd.MultivariateNormalTriL(
@@ -176,27 +228,6 @@ def mixtureOfGaussiansTest(n_observations, mixture_weights, mixture_component_me
                     loc=mixture_component_means,
                     scale_tril=mixture_component_covariances_cholesky,
                     name='component'), sample_shape=(n_observations,), name='data')
-
-def centeredMarginalizedIndependentFactorAnalysisTest(n_observations, mixture_weights, mixture_component_var, factor_loadings, data_var):
-    n_sources, n_features = factor_loadings.shape
-    n_components_in_mixture = mixture_weights.shape[1]
-    combinations = tf.one_hot(np.array(list(
-        product(range(n_components_in_mixture), repeat=n_sources))).astype('float32'), 
-        depth=n_components_in_mixture) # combinations x sources x component indicator
-    n_combinations = combinations.shape[0]
-
-    all_mixture_weights = tf.reduce_prod(tf.reduce_sum(combinations * mixture_weights[None, :, :], axis=-1), axis=1)
-    all_mixture_vars = tf.reduce_sum(combinations * mixture_component_var, axis=-1)
-    factor_loadings /= tf.linalg.norm(factor_loadings, axis=1, keepdims=True)
-
-    data = ed.MixtureSameFamily(
-        mixture_distribution=tfd.Categorical(probs=all_mixture_weights),
-        components_distribution=tfd.MultivariateNormalTriL(
-            loc=tf.zeros((n_combinations, n_features)),
-            scale_tril=tf.linalg.cholesky(tf.einsum('sf,cs,sg->cfg', factor_loadings, all_mixture_vars, factor_loadings) + tf.diag(data_var)[None,:,:]),
-            name='data_component'),
-            sample_shape=(n_observations,), name='data')   
-    return data
 
 #    data = ed.MixtureSameFamily(
 #        mixture_distribution=tfd.Categorical(probs=all_mixture_weights),

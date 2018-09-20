@@ -41,16 +41,16 @@ if __name__ == '__main__':
     Ntest = 1000
 
     n_features = 2
-    n_clusters = 4
+    n_clusters = 2
     n_sources = 2
-    n_restarts = 5
-    n_datasets = 3
+    n_restarts = 7
+    n_datasets = 10
 
     #deviations = np.logspace(-3,1,5, dtype='float32')
-    deviations = np.logspace(-1,1,3, dtype='float32') # larger deviation means better snr in both models
+    deviations = np.logspace(-1,1,10, dtype='float32') # larger deviation means better snr in both models
 
     models = []
-    models.append(Mapper(mixtureOfGaussians, 'mog', observed_variable_names=['data'], n_observations=N, n_components=4, n_features=n_features))        
+    models.append(Mapper(mixtureOfGaussians, 'mog', observed_variable_names=['data'], n_observations=N, n_components=n_clusters, n_features=n_features))        
     models.append(Mapper(centeredMarginalizedIndependentFactorAnalysis, 'cifa', observed_variable_names=['data'], n_observations=N, n_components_in_mixture = n_clusters, n_sources=n_sources, n_features=n_features, mixture_component_var_concentration=.1, mixture_component_var_rate=1.,data_var_concentration=.1,data_var_rate=10.))
     model_names = [model.model_name for model in models]
     data_generating_models = ['mog','cifa']
@@ -74,7 +74,7 @@ if __name__ == '__main__':
     data_variance = tf.placeholder(shape=(), dtype='float32')
     assign_defaults = [None,None]
     assign_defaults[0] = models[0].assigner(mixture_component_covariances_cholesky=10*tf.tile(tf.eye(n_features)[None],[n_clusters,1,1]),mixture_component_means=cluster_centers)
-    assign_defaults[1] = models[1].assigner(data_var=1e-3*tf.ones((1,n_features)), factor_loadings=ica_directions)
+    assign_defaults[1] = models[1].assigner(data_var=1e-1*data_variance*tf.ones((n_features,)), factor_loadings=ica_directions)
 
     
     experimental_variable_prealloc = np.zeros((len(data_generating_models), len(models), len(deviations), n_restarts, n_datasets))
@@ -90,7 +90,7 @@ if __name__ == '__main__':
 
     placeholder_deviation = tf.placeholder(dtype='float32')
 
-    fica = FastICA(n_components=2)
+    fica = FastICA(n_components=n_sources)
     kmeans = KMeans(n_clusters=n_clusters)
 
     sess = tf.Session()
