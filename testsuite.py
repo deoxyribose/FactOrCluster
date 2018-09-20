@@ -24,15 +24,20 @@ def MAP_model(MAP_parameter,model,N):
     # model here is observation model
     # for MoGs, z is already collapsed, so we're evaluating int(p(x_new|theta,z)p(z),dz)
     # for ifa, z is sampled mc_samples times, so we're evaluating int(p(x_new|theta,z_new)q(z),dz) where q(z) is mc_samples pointmasses.
-    try:
-        model_MAP = model(n_observations = N, mc_samples=1000, **MAP_parameter)
-    except TypeError:
-        model_MAP = model(n_observations = N, **MAP_parameter)
-    return model_MAP
+    #try:
+    #    model_MAP = model(n_observations = N, mc_samples=1000, **MAP_parameter)
+    #except TypeError:
+    #    model_MAP = model(n_observations = N, **MAP_parameter)
+    #return model_MAP
+    return model(n_observations = N, **MAP_parameter)
 
 def neg_log_lik(MAP_parameter,model,data):
+    MAP_parameter = {key: tf.convert_to_tensor(MAP_parameter[key],dtype=tf.float32) for key in MAP_parameter}
+    data = tf.convert_to_tensor(data,tf.float32)
     N = data.shape[0]
     model_MAP = MAP_model(MAP_parameter,model,N)
+    print(list(MAP_parameter.keys()))
+    print(model_MAP.distribution.dtype)
     return -tf.reduce_mean(model_MAP.distribution.log_prob(data))
 
 if __name__ == '__main__':

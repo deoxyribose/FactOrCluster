@@ -29,7 +29,8 @@ class Mapper:
             self.variable_names = [key for key in self.tape.keys() if key not in self.observed_variable_names]
             self.variable_dist = {key: self.tape[key].distribution for key in self.variable_names}
             self.variable_shapes = {key: self.tape[key].shape for key in self.variable_names}
-            self.transforms = {key: self.get_bijector(self.tape[key]) for key in self.variable_names}
+            self.variable_dtypes = {key: self.tape[key].dtype for key in self.variable_names}
+            self.transforms = {key: self.get_bijector(self.tape[key]) if self.variable_dtypes[key]==tf.float32 else self.get_bijector64(self.tape[key]) for key in self.variable_names}
             self.unconstrained_variable_shapes = {key: self.transforms[key].inverse_event_shape(val) for key, val in self.variable_shapes.items()}
             self.unconstrained_variables = {key: tf.get_variable(key, shape=self.unconstrained_variable_shapes[key]) for key in self.variable_names}
             self.variables = {key: self.transforms[key].forward(val) for key, val in self.unconstrained_variables.items()}
@@ -38,7 +39,9 @@ class Mapper:
         distribution = random_variable.distribution
         if distribution.__class__ in self._positive_distributions:
             #return tfb.Softplus() #tfp.trainable_distributions.softplus_and_shift(variable)
-            return tfb.Chain([tfb.AffineScalar(shift=1e-3,scale=1e3), tfb.Sigmoid()], name="scaled_sigmoid")
+            shift = tf.convert_to_tensor(1e-3,dtype=tf.float32)
+            scale = tf.convert_to_tensor(1e3,dtype=tf.float32)
+            return tfb.Chain([tfb.AffineScalar(shift=shift,scale=scale), tfb.Sigmoid()], name="scaled_sigmoid")
             #return tfb.Chain([tfb.Affine(shift=1e-4), tfb.Softplus()], name="softplus_and_shift")
         elif distribution.__class__ in self._simplex_distributions:
             return SoftmaxCentered()
@@ -46,6 +49,11 @@ class Mapper:
             return tfb.ScaleTriL()
         else:
             return tfb.Identity()
+
+    def get_bijector64(self, random_variable):
+        shift = tf.convert_to_tensor(1e-3,dtype=tf.float64)
+        scale = tf.convert_to_tensor(1e3,dtype=tf.float64)
+        return tfb.Chain([tfb.AffineScalar(shift=shift,scale=scale), tfb.Sigmoid()], name="scaled_sigmoid")
 
     def map_neg_log_joint_fn(self, **kwargs):
         return -self.log_joint_fn(*self._args, **self._kwargs, **self.variables, **kwargs)
