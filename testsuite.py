@@ -13,7 +13,7 @@ from tfpmodels import centeredMarginalizedIndependentFactorAnalysisTest, mixture
 import pandas as pd
 import xarray as xr
 
-from sklearn.decomposition import FastICA
+from sklearn.decomposition import FastICA, PCA
 from sklearn.cluster import KMeans
 
 import pickle
@@ -90,7 +90,8 @@ if __name__ == '__main__':
 
     placeholder_deviation = tf.placeholder(dtype='float32')
 
-    fica = FastICA(n_components=n_sources)
+    #fica = FastICA(n_components=n_sources)
+    pca = PCA(n_components=n_sources)
     kmeans = KMeans(n_clusters=n_clusters)
 
     sess = tf.Session()
@@ -110,13 +111,15 @@ if __name__ == '__main__':
                 data, reference = sess.run([data_tf, reference_tf], feed_dict={placeholder_deviation: deviation})
                 
                 kmeans_cluster_centers = kmeans.fit(data[:N]).cluster_centers_
-                fica_directions = fica.fit(data).mixing_.T
-                fica_directions = fica_directions/np.linalg.norm(fica_directions,axis=1, keepdims=True)
+#                fica_directions = fica.fit(data).mixing_.T
+#                fica_directions = fica_directions/np.linalg.norm(fica_directions,axis=1, keepdims=True)
+                pca_directions = pca.fit(data).components_.T
+                pca_directions = pca_directions/np.linalg.norm(pca_directions,axis=1, keepdims=True)
                 current_data_variance = data[:N].var()
 
                 for restart in range(n_restarts):        
                     sess.run(all_init)
-                    sess.run(assign_defaults, feed_dict={cluster_centers: kmeans_cluster_centers, ica_directions: fica_directions, data_variance: current_data_variance})
+                    sess.run(assign_defaults, feed_dict={cluster_centers: kmeans_cluster_centers, ica_directions: pca_directions, data_variance: current_data_variance})
                     for i,model in enumerate(models): 
                         print('g={},x={},d={},r={},i={}'.format(data_generating_model, deviation, dataset, restart, i))
                         opt[model.model_name].minimize(feed_dict={data_train: data[:N]}, session=sess)
