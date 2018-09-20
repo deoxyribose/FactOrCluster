@@ -32,7 +32,7 @@ class Mapper:
             self.variable_dtypes = {key: self.tape[key].dtype for key in self.variable_names}
             self.transforms = {key: self.get_bijector(self.tape[key]) if self.variable_dtypes[key]==tf.float32 else self.get_bijector64(self.tape[key]) for key in self.variable_names}
             self.unconstrained_variable_shapes = {key: self.transforms[key].inverse_event_shape(val) for key, val in self.variable_shapes.items()}
-            self.unconstrained_variables = {key: tf.get_variable(key, shape=self.unconstrained_variable_shapes[key]) for key in self.variable_names}
+            self.unconstrained_variables = {key: tf.get_variable(key, shape=self.unconstrained_variable_shapes[key], dtype='float64') for key in self.variable_names}
             self.variables = {key: self.transforms[key].forward(val) for key, val in self.unconstrained_variables.items()}
         
     def get_bijector(self, random_variable):

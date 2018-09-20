@@ -12,7 +12,7 @@ print(jitter)
 
 def independentFactorAnalysis(n_observations = 1000, n_components_in_mixture = 2, n_sources = 2, n_features = 2, mixture_component_means_mean = 0., mixture_component_means_var = 1., mixture_component_var_concentration = 1., mixture_component_var_rate=1.,mixture_weights_concentration=None,data_var_concentration=1.,data_var_rate=1.):
     if mixture_weights_concentration is None:
-        mixture_weights_concentration = np.ones(n_components_in_mixture, dtype='float32')
+        mixture_weights_concentration = np.ones(n_components_in_mixture, dtype='float64')
     mixture_component_means = ed.Normal(loc=mixture_component_means_mean, scale=tf.sqrt(mixture_component_means_var), sample_shape=(n_sources,n_components_in_mixture), name='mixture_component_means')
     mixture_component_var = ed.Gamma(concentration=mixture_component_var_concentration, rate=tf.sqrt(mixture_component_var_rate), sample_shape=(n_sources,n_components_in_mixture), name='mixture_component_var')
     mixture_weights = ed.Dirichlet(concentration=mixture_weights_concentration, sample_shape=(n_sources,), name='mixture_weights')
@@ -29,7 +29,7 @@ def independentFactorAnalysis(n_observations = 1000, n_components_in_mixture = 2
 
 def centeredIndependentFactorAnalysis(n_observations = 1000, n_components_in_mixture = 2, n_sources = 2, n_features = 2, mixture_component_var_concentration = 1., mixture_component_var_rate=1.,mixture_weights_concentration=None,data_var_concentration=1.,data_var_rate=1.):
     if mixture_weights_concentration is None:
-        mixture_weights_concentration = np.ones(n_components_in_mixture, dtype='float32')
+        mixture_weights_concentration = np.ones(n_components_in_mixture, dtype='float64')
     mixture_component_var = ed.Gamma(concentration=mixture_component_var_concentration, rate=mixture_component_var_rate, sample_shape=(n_sources,n_components_in_mixture), name='mixture_component_var')
     mixture_weights = ed.Dirichlet(concentration=mixture_weights_concentration, sample_shape=(n_sources,), name='mixture_weights')
     sources = ed.Independent(
@@ -53,16 +53,23 @@ def condition_number(matrix):
 def centeredMarginalizedIndependentFactorAnalysis(n_observations = 1000, n_sources = 2, n_components_in_mixture=2, n_features = 2, mixture_component_var_concentration = 1., mixture_component_var_rate=1.,mixture_weights_concentration=None,data_var_concentration=1.,data_var_rate=1.):
 
     if mixture_weights_concentration is None:
-        mixture_weights_concentration = np.ones(n_components_in_mixture, dtype='float32')
+        mixture_weights_concentration = np.ones(n_components_in_mixture, dtype='float64')
     combinations = tf.one_hot(np.array(list(
-        product(range(n_components_in_mixture), repeat=n_sources))).astype('float32'), 
-        depth=n_components_in_mixture) # combinations x sources x component indicator
+        product(range(n_components_in_mixture), repeat=n_sources))).astype('float64'), 
+        depth=n_components_in_mixture, dtype='float64') # combinations x sources x component indicator
     n_combinations = combinations.shape[0]
-    mixture_component_var = ed.Gamma(concentration=mixture_component_var_concentration, rate=mixture_component_var_rate, sample_shape=(n_sources,n_components_in_mixture), name='mixture_component_var')
-    mixture_weights = ed.Dirichlet(concentration=mixture_weights_concentration, sample_shape=(n_sources,), name='mixture_weights')
-    factor_loadings = ed.Normal(loc=0., scale=1., sample_shape=(n_sources, n_features), name='factor_loadings')
+    mixture_component_var = ed.Gamma(concentration=tf.convert_to_tensor(mixture_component_var_concentration, dtype='float64'),
+        rate=tf.convert_to_tensor(mixture_component_var_rate, dtype='float64'),
+        sample_shape=(n_sources,n_components_in_mixture), name='mixture_component_var')
+    mixture_weights = ed.Dirichlet(concentration=tf.convert_to_tensor(mixture_weights_concentration, dtype='float64'),
+        sample_shape=(n_sources,), name='mixture_weights')
+    factor_loadings = ed.Normal(loc=tf.convert_to_tensor(0., dtype='float64'), 
+        scale=tf.convert_to_tensor(1., dtype='float64'), 
+        sample_shape=(n_sources, n_features), name='factor_loadings')
     factor_loadings /= tf.linalg.norm(factor_loadings, axis=1, keepdims=True)
-    data_var = ed.Gamma(concentration=data_var_concentration, rate=data_var_rate, sample_shape=(n_features,), name='data_var')
+    data_var = ed.Gamma(concentration=tf.convert_to_tensor(data_var_concentration, dtype='float64'),
+        rate=tf.convert_to_tensor(data_var_rate, dtype='float64'),
+        sample_shape=(n_features,), name='data_var')
     
     all_mixture_weights = tf.reduce_prod(tf.reduce_sum(combinations * mixture_weights[None, :, :], axis=-1), axis=1)
     all_mixture_vars = tf.reduce_sum(combinations * mixture_component_var[None, :, :], axis=-1)
@@ -92,8 +99,8 @@ def centeredMarginalizedIndependentFactorAnalysisTest(n_observations, mixture_we
     n_sources, n_features = factor_loadings.shape
     n_components_in_mixture = mixture_weights.shape[1]
     combinations = tf.one_hot(np.array(list(
-        product(range(n_components_in_mixture), repeat=n_sources))).astype('float32'), 
-        depth=n_components_in_mixture) # combinations x sources x component indicator
+        product(range(n_components_in_mixture), repeat=n_sources))).astype('float64'), 
+        depth=n_components_in_mixture, dtype='float64') # combinations x sources x component indicator
     n_combinations = combinations.shape[0]
 
     all_mixture_weights = tf.reduce_prod(tf.reduce_sum(combinations * mixture_weights[None, :, :], axis=-1), axis=1)
@@ -135,15 +142,20 @@ def centeredMarginalizedIndependentFactorAnalysisTest(n_observations, mixture_we
 
 def mixtureOfGaussians(n_observations = 1000, n_components = 2, n_features = 2, mixture_component_means_mean = 0., mixture_component_means_var = 1., mixture_component_covariances_cholesky_df = None, mixture_component_covariances_cholesky_scale_tril=None,mixture_weights_concentration=None):
     if mixture_weights_concentration is None:
-        mixture_weights_concentration = np.ones(n_components, dtype='float32')
+        mixture_weights_concentration = np.ones(n_components, dtype='float64')
     if mixture_component_covariances_cholesky_df is None:
         mixture_component_covariances_cholesky_df = n_features + 2.
     if mixture_component_covariances_cholesky_scale_tril is None:
-        mixture_component_covariances_cholesky_scale_tril = (1./(mixture_component_covariances_cholesky_df - n_features - 1.))*tf.eye(n_features)
-    mixture_weights = ed.Dirichlet(concentration=mixture_weights_concentration, name='mixture_weights')
-    mixture_component_means = ed.Normal(loc=mixture_component_means_mean, scale=tf.sqrt(mixture_component_means_var), sample_shape=(n_components, n_features), name='mixture_component_means')
+        mixture_component_covariances_cholesky_scale_tril = (1./(mixture_component_covariances_cholesky_df - n_features - 1.))*tf.eye(n_features, dtype='float64')
+    mixture_weights = ed.Dirichlet(concentration=tf.convert_to_tensor(mixture_weights_concentration, dtype='float64'), 
+        name='mixture_weights')
+    mixture_component_means = ed.Normal(loc=tf.convert_to_tensor(mixture_component_means_mean, dtype='float64'), 
+        scale=tf.sqrt(tf.convert_to_tensor(mixture_component_means_var, dtype='float64')), 
+        sample_shape=(n_components, n_features), name='mixture_component_means')
     mixture_component_covariances_cholesky = ed.Wishart(
-        df=mixture_component_covariances_cholesky_df, scale_tril=mixture_component_covariances_cholesky_scale_tril, sample_shape=(n_components), input_output_cholesky=True, name='mixture_component_covariances_cholesky')
+        df=mixture_component_covariances_cholesky_df, 
+        scale_tril=tf.convert_to_tensor(mixture_component_covariances_cholesky_scale_tril, dtype='float64'),
+        sample_shape=(n_components), input_output_cholesky=True, name='mixture_component_covariances_cholesky')
 
     return ed.MixtureSameFamily(
                 mixture_distribution=tfd.Categorical(probs=mixture_weights),
@@ -154,7 +166,7 @@ def mixtureOfGaussians(n_observations = 1000, n_components = 2, n_features = 2, 
 
 def lowRankMixtureOfGaussians(n_observations = 1000, n_components = 2, n_sources = 2, n_features = 2, mixture_component_means_mean = 0., mixture_component_means_var = 1., mixture_component_covariances_cholesky_df = None, mixture_component_covariances_cholesky_scale_tril=None,mixture_weights_concentration=None, data_var_concentration=1., data_var_rate=1.):
     if mixture_weights_concentration is None:
-        mixture_weights_concentration = np.ones(n_components, dtype='float32')
+        mixture_weights_concentration = np.ones(n_components, dtype='float64')
     if mixture_component_covariances_cholesky_df is None:
         mixture_component_covariances_cholesky_df = n_sources + 2.
     if mixture_component_covariances_cholesky_scale_tril is None:
@@ -176,7 +188,7 @@ def lowRankMixtureOfGaussians(n_observations = 1000, n_components = 2, n_sources
 
 def mixtureOfFactorAnalyzers(n_observations = 1000, n_components = 2, n_sources = 2, n_features = 2, mixture_component_means_mean = 0., mixture_component_means_var = 1., mixture_component_covariances_cholesky_df = None, mixture_component_covariances_cholesky_scale_tril=None, mixture_weights_concentration=None, data_var_concentration=1., data_var_rate=1.):
     if mixture_weights_concentration is None:
-        mixture_weights_concentration = np.ones(n_components, dtype='float32')
+        mixture_weights_concentration = np.ones(n_components, dtype='float64')
     if mixture_component_covariances_cholesky_df is None:
         mixture_component_covariances_cholesky_df = n_sources + 2.
     if mixture_component_covariances_cholesky_scale_tril is None:
@@ -245,7 +257,7 @@ def mixtureOfGaussiansTest(n_observations, mixture_weights, mixture_component_me
 #    if hasattr(tmp,'shape') and hyperparameters['mixture_weights_concentration'].shape == (n_components_in_mixture,):
 #        pass
 #    else:
-#        hyperparameters['mixture_weights_concentration'] = np.ones(n_components_in_mixture, dtype='float32')
+#        hyperparameters['mixture_weights_concentration'] = np.ones(n_components_in_mixture, dtype='float64')
 #    mixture_component_var = ed.Gamma(concentration=hyperparameters['mixture_component_var_concentration'], rate=hyperparameters['mixture_component_var_rate'], sample_shape=(n_sources,n_components_in_mixture), name='mixture_component_var')
 #    mixture_weights = ed.Dirichlet(concentration=hyperparameters['mixture_weights_concentration'], sample_shape=(n_sources,), name='mixture_weights')
 #    sources = ed.Independent(

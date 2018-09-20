@@ -32,8 +32,8 @@ def MAP_model(MAP_parameter,model,N):
     return model(n_observations = N, **MAP_parameter)
 
 def neg_log_lik(MAP_parameter,model,data):
-    MAP_parameter = {key: tf.convert_to_tensor(MAP_parameter[key],dtype=tf.float32) for key in MAP_parameter}
-    data = tf.convert_to_tensor(data,tf.float32)
+    MAP_parameter = {key: MAP_parameter[key] for key in MAP_parameter}
+    #data = tf.convert_to_tensor(data,tf.float32)
     N = data.shape[0]
     model_MAP = MAP_model(MAP_parameter,model,N)
     print(list(MAP_parameter.keys()))
@@ -42,8 +42,8 @@ def neg_log_lik(MAP_parameter,model,data):
 
 if __name__ == '__main__':
 
-    N = 1000
-    Ntest = 1000
+    N = 10
+    Ntest = 10
 
     n_features = 2
     n_clusters = 2
@@ -52,7 +52,7 @@ if __name__ == '__main__':
     n_datasets = 10
 
     #deviations = np.logspace(-3,1,5, dtype='float32')
-    deviations = np.logspace(-1,1,10, dtype='float32') # larger deviation means better snr in both models
+    deviations = np.logspace(-1,1,10, dtype='float64') # larger deviation means better snr in both models
 
     models = []
     models.append(Mapper(mixtureOfGaussians, 'mog', observed_variable_names=['data'], n_observations=N, n_components=n_clusters, n_features=n_features))        
@@ -67,19 +67,19 @@ if __name__ == '__main__':
     loss = {}
     opt = {}
 
-    data_train = tf.placeholder(shape=(N,n_features), dtype='float32') 
-    data_test = tf.placeholder(shape=(Ntest,n_features), dtype='float32')
+    data_train = tf.placeholder(shape=(N,n_features), dtype='float64') 
+    data_test = tf.placeholder(shape=(Ntest,n_features), dtype='float64')
     for model, test_model in zip(models, test_models):
         train_neg_log_lik_op.append(neg_log_lik(model.variables,test_model,data_train))
         test_neg_log_lik_op.append(neg_log_lik(model.variables,test_model,data_test))
         ppc_op.append(MAP_model(model.variables,test_model,N))
         loss[model.model_name], opt[model.model_name] = model.bfgs_optimizer(data=data_train)
-    cluster_centers = tf.placeholder(shape=(n_clusters,n_features), dtype='float32')
-    ica_directions = tf.placeholder(shape=(2,n_features), dtype='float32')
-    data_variance = tf.placeholder(shape=(), dtype='float32')
+    cluster_centers = tf.placeholder(shape=(n_clusters,n_features), dtype='float64')
+    ica_directions = tf.placeholder(shape=(2,n_features), dtype='float64')
+    data_variance = tf.placeholder(shape=(), dtype='float64')
     assign_defaults = [None,None]
-    assign_defaults[0] = models[0].assigner(mixture_component_covariances_cholesky=10*tf.tile(tf.eye(n_features)[None],[n_clusters,1,1]),mixture_component_means=cluster_centers)
-    assign_defaults[1] = models[1].assigner(data_var=1e-1*data_variance*tf.ones((n_features,)), factor_loadings=ica_directions)
+    assign_defaults[0] = models[0].assigner(mixture_component_covariances_cholesky=10*tf.tile(tf.eye(n_features, dtype='float64')[None],[n_clusters,1,1]),mixture_component_means=cluster_centers)
+    assign_defaults[1] = models[1].assigner(data_var=1e-1*data_variance*tf.ones((n_features,), dtype='float64'), factor_loadings=ica_directions)
 
     
     experimental_variable_prealloc = np.zeros((len(data_generating_models), len(models), len(deviations), n_restarts, n_datasets))
@@ -93,7 +93,7 @@ if __name__ == '__main__':
     ppc = {}
     data_store = {}
 
-    placeholder_deviation = tf.placeholder(dtype='float32')
+    placeholder_deviation = tf.placeholder(dtype='float64')
 
     #fica = FastICA(n_components=n_sources)
     pca = PCA(n_components=n_sources)
