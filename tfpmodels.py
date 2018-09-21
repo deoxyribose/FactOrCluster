@@ -163,7 +163,7 @@ def mixtureOfGaussians(n_observations = 1000, n_components = 2, n_features = 2, 
                 mixture_distribution=tfd.Categorical(probs=mixture_weights),
                 components_distribution=tfd.MultivariateNormalTriL(
                     loc=mixture_component_means,
-                    scale_tril=mixture_component_covariances_cholesky,
+                    scale_tril=mixture_component_covariances_cholesky + 1e-1*tf.eye(n_features, dtype='float64')[None,:,:],
                     name='component'), sample_shape=(n_observations,), name='data')
 
 def lowRankMixtureOfGaussians(n_observations = 1000, n_components = 2, n_sources = 2, n_features = 2, mixture_component_means_mean = 0., mixture_component_means_var = 1., mixture_component_covariances_cholesky_df = None, mixture_component_covariances_cholesky_scale_tril=None,mixture_weights_concentration=None, data_var_concentration=1., data_var_rate=1.):
