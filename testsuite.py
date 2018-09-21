@@ -18,6 +18,11 @@ from sklearn.cluster import KMeans
 
 import pickle
 
+store = []
+
+def callback(parameters):
+    store.append(parameters)
+
 def MAP_model(MAP_parameter,model,N):
     # MAP_parameter for ifa includes sources, but ifa_test doesn't take it as input
     MAP_parameter = dict(MAP_parameter)
@@ -42,8 +47,10 @@ def neg_log_lik(MAP_parameter,model,data):
 
 if __name__ == '__main__':
 
-    N = 10
-    Ntest = 10
+    N = 1000
+    Ntest = 1000
+
+    initial_direction = 'ica'
 
     n_features = 2
     n_clusters = 2
@@ -66,6 +73,8 @@ if __name__ == '__main__':
     ppc_op = []
     loss = {}
     opt = {}
+    cg_opt = {}
+    optstep = {}
 
     data_train = tf.placeholder(shape=(N,n_features), dtype='float64') 
     data_test = tf.placeholder(shape=(Ntest,n_features), dtype='float64')
@@ -73,7 +82,9 @@ if __name__ == '__main__':
         train_neg_log_lik_op.append(neg_log_lik(model.variables,test_model,data_train))
         test_neg_log_lik_op.append(neg_log_lik(model.variables,test_model,data_test))
         ppc_op.append(MAP_model(model.variables,test_model,N))
-        loss[model.model_name], opt[model.model_name] = model.bfgs_optimizer(data=data_train)
+        loss[model.model_name], opt[model.model_name] = model.pybfgs_optimizer(data=data_train)
+        _, cg_opt[model.model_name] = model.cg_optimizer(data=data_train)
+        optstep[model.model_name] = tf.contrib.opt.ScipyOptimizerInterface(loss[model.model_name], var_list=list(model.unconstrained_variables.values()), options={'maxiter': 1})
     cluster_centers = tf.placeholder(shape=(n_clusters,n_features), dtype='float64')
     ica_directions = tf.placeholder(shape=(2,n_features), dtype='float64')
     data_variance = tf.placeholder(shape=(), dtype='float64')
@@ -95,39 +106,48 @@ if __name__ == '__main__':
 
     placeholder_deviation = tf.placeholder(dtype='float64')
 
-    #fica = FastICA(n_components=n_sources)
-    pca = PCA(n_components=n_sources)
+    fica = FastICA(n_components=n_sources)
+    #pca = PCA(n_components=n_sources)
     kmeans = KMeans(n_clusters=n_clusters)
 
     sess = tf.Session()
 
     all_init = tf.global_variables_initializer()
+    
+    data_tf = {}
+
     for data_generating_model in data_generating_models:
         if data_generating_model == 'mog':
             with tape() as reference_tf:
-                data_tf = mixtureOfGaussians(n_observations=N + Ntest, n_components=n_clusters, n_features=n_features, mixture_component_means_var=placeholder_deviation)
+                data_tf[data_generating_model] = mixtureOfGaussians(n_observations=N + Ntest, n_components=n_clusters, n_features=n_features, mixture_component_means_var=placeholder_deviation)
         else:
             with tape() as reference_tf:
-                data_tf = centeredMarginalizedIndependentFactorAnalysis(n_observations=N + Ntest, n_components_in_mixture = n_clusters, n_sources=n_clusters, n_features=n_features, mixture_component_var_concentration=.1, mixture_component_var_rate=1.,data_var_concentration=.1,data_var_rate=1./placeholder_deviation)
-        
-        
+                data_tf[data_generating_model] = centeredMarginalizedIndependentFactorAnalysis(n_observations=N + Ntest, n_components_in_mixture = n_clusters, n_sources=n_clusters, n_features=n_features, mixture_component_var_concentration=.1, mixture_component_var_rate=1.,data_var_concentration=.1,data_var_rate=1./placeholder_deviation)
+    for data_generating_model in data_generating_models:    
         for deviation in deviations:
             for dataset in range(n_datasets):
-                data, reference = sess.run([data_tf, reference_tf], feed_dict={placeholder_deviation: deviation})
+                data, reference = sess.run([data_tf[data_generating_model], reference_tf], feed_dict={placeholder_deviation: deviation})
                 
                 kmeans_cluster_centers = kmeans.fit(data[:N]).cluster_centers_
-#                fica_directions = fica.fit(data).mixing_.T
-#                fica_directions = fica_directions/np.linalg.norm(fica_directions,axis=1, keepdims=True)
-                pca_directions = pca.fit(data).components_.T
-                pca_directions = pca_directions/np.linalg.norm(pca_directions,axis=1, keepdims=True)
+                if initial_direction.lower() == 'ica':
+                    init_directions = fica.fit(data).mixing_.T
+                elif initial_direction.lower() == 'pca':
+                    init_directions = pca.fit(data).components_.T
+                else:
+                    init_directions = np.random.randn(n_sources, n_features).astype('float64')
+                init_directions = init_directions/np.linalg.norm(init_directions,axis=1, keepdims=True)
                 current_data_variance = data[:N].var()
 
                 for restart in range(n_restarts):        
                     sess.run(all_init)
-                    sess.run(assign_defaults, feed_dict={cluster_centers: kmeans_cluster_centers, ica_directions: pca_directions, data_variance: current_data_variance})
+                    sess.run(assign_defaults, feed_dict={cluster_centers: kmeans_cluster_centers, ica_directions: init_directions, data_variance: current_data_variance})
                     for i,model in enumerate(models): 
                         print('g={},x={},d={},r={},i={}'.format(data_generating_model, deviation, dataset, restart, i))
-                        opt[model.model_name].minimize(feed_dict={data_train: data[:N]}, session=sess)
+                        try: 
+                            opt[model.model_name].minimize(feed_dict={data_train: data[:N]}, session=sess, loss_callback=callback, fetches=[model.variables])
+                        except:
+                            print('retrying')
+                            cg_opt[model.model_name].minimize(feed_dict={data_train: data[:N]}, session=sess, loss_callback=callback, fetches=[model.variables])
                         MAP_parameter, converged_loss = sess.run([model.variables, loss[model.model_name]], feed_dict={data_train: data[:N]})
                         MAP_parameters[(data_generating_model,model.model_name, deviation, restart, dataset)] = MAP_parameter
                         ppc[(data_generating_model,model.model_name, deviation, restart, dataset)] = sess.run(ppc_op[i])

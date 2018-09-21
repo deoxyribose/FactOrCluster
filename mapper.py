@@ -7,8 +7,7 @@ import numpy as np
 
 from future_features import tape, SoftmaxCentered
 
-def softplus_and_shift_1e05(x):
-    return tfp.trainable_distributions.softplus_and_shift(x,shift=1e-05)
+from tfopt import PylbfgsInterface
 
 
 class Mapper:
@@ -30,30 +29,29 @@ class Mapper:
             self.variable_dist = {key: self.tape[key].distribution for key in self.variable_names}
             self.variable_shapes = {key: self.tape[key].shape for key in self.variable_names}
             self.variable_dtypes = {key: self.tape[key].dtype for key in self.variable_names}
-            self.transforms = {key: self.get_bijector(self.tape[key]) if self.variable_dtypes[key]==tf.float32 else self.get_bijector64(self.tape[key]) for key in self.variable_names}
+            self.transforms = {key: self.get_bijector(self.tape[key]) for key in self.variable_names}
             self.unconstrained_variable_shapes = {key: self.transforms[key].inverse_event_shape(val) for key, val in self.variable_shapes.items()}
             self.unconstrained_variables = {key: tf.get_variable(key, shape=self.unconstrained_variable_shapes[key], dtype='float64') for key in self.variable_names}
             self.variables = {key: self.transforms[key].forward(val) for key, val in self.unconstrained_variables.items()}
         
     def get_bijector(self, random_variable):
+        shift = tf.convert_to_tensor(1e-3,dtype=tf.float64)
         distribution = random_variable.distribution
         if distribution.__class__ in self._positive_distributions:
             #return tfb.Softplus() #tfp.trainable_distributions.softplus_and_shift(variable)
-            shift = tf.convert_to_tensor(1e-3,dtype=tf.float32)
-            scale = tf.convert_to_tensor(1e3,dtype=tf.float32)
-            return tfb.Chain([tfb.AffineScalar(shift=shift,scale=scale), tfb.Sigmoid()], name="scaled_sigmoid")
+            return tfb.Chain([tfb.AffineScalar(shift=shift), tfb.Exp()], name="scaled_sigmoid")
             #return tfb.Chain([tfb.Affine(shift=1e-4), tfb.Softplus()], name="softplus_and_shift")
         elif distribution.__class__ in self._simplex_distributions:
             return SoftmaxCentered()
         elif distribution.__class__ in self._tril_distributions:
-            return tfb.ScaleTriL()
+            return tfb.ScaleTriL(diag_shift=shift)
         else:
             return tfb.Identity()
 
-    def get_bijector64(self, random_variable):
-        shift = tf.convert_to_tensor(1e-3,dtype=tf.float64)
-        scale = tf.convert_to_tensor(1e3,dtype=tf.float64)
-        return tfb.Chain([tfb.AffineScalar(shift=shift,scale=scale), tfb.Sigmoid()], name="scaled_sigmoid")
+#    def get_bijector64(self, random_variable):
+#        shift = tf.convert_to_tensor(1e-3,dtype=tf.float64)
+#        scale = tf.convert_to_tensor(1e3,dtype=tf.float64)
+#        return tfb.Chain([tfb.AffineScalar(shift=shift,scale=scale), tfb.Sigmoid()], name="scaled_sigmoid")
 
     def map_neg_log_joint_fn(self, **kwargs):
         return -self.log_joint_fn(*self._args, **self._kwargs, **self.variables, **kwargs)
@@ -65,6 +63,11 @@ class Mapper:
     def l_bfgs_optimizer(self, **kwargs):
         map_neg_log_joint = self.map_neg_log_joint_fn(**kwargs)
         return map_neg_log_joint, tf.contrib.opt.ScipyOptimizerInterface(map_neg_log_joint, self.unconstrained_variables.values(), method='L-BFGS-B')
+
+    def pybfgs_optimizer(self, **kwargs):
+        map_neg_log_joint = self.map_neg_log_joint_fn(**kwargs)
+        return map_neg_log_joint, PylbfgsInterface(map_neg_log_joint, self.unconstrained_variables.values())
+
 
     def cg_optimizer(self, **kwargs):
         map_neg_log_joint = self.map_neg_log_joint_fn(**kwargs)

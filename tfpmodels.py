@@ -66,7 +66,7 @@ def centeredMarginalizedIndependentFactorAnalysis(n_observations = 1000, n_sourc
     factor_loadings = ed.Normal(loc=tf.convert_to_tensor(0., dtype='float64'), 
         scale=tf.convert_to_tensor(1., dtype='float64'), 
         sample_shape=(n_sources, n_features), name='factor_loadings')
-    factor_loadings /= tf.linalg.norm(factor_loadings, axis=1, keepdims=True)
+    #factor_loadings /= tf.linalg.norm(factor_loadings, axis=1, keepdims=True)
     data_var = ed.Gamma(concentration=tf.convert_to_tensor(data_var_concentration, dtype='float64'),
         rate=tf.convert_to_tensor(data_var_rate, dtype='float64'),
         sample_shape=(n_features,), name='data_var')
@@ -78,16 +78,17 @@ def centeredMarginalizedIndependentFactorAnalysis(n_observations = 1000, n_sourc
     covmat = tf.einsum('csf,csg->cfg', cov_factor, cov_factor) + tf.diag(jitter + data_var)[None,:,:]
     
     # conditioning of covariance matrices
-    largest_magnitude_covariance = tf.reduce_max(tf.abs(covmat),axis=[1,2],keepdims=True)
-    covmat /= largest_magnitude_covariance
-    covmat = tf.cast(covmat,tf.float64)
+    #largest_magnitude_covariance = tf.reduce_max(tf.abs(covmat),axis=[1,2],keepdims=True)
+    #covmat /= largest_magnitude_covariance
+    #covmat = tf.cast(covmat,tf.float64)
     #covmat /= tf.Print(largest_magnitude_covariance,[largest_magnitude_covariance],summarize=100,message='\n Normalizing covmats by')
 
     data = ed.MixtureSameFamily(
         mixture_distribution=tfd.Categorical(probs=all_mixture_weights),
         components_distribution=tfd.MultivariateNormalTriL(
             loc=tf.zeros((n_combinations, n_features),dtype=tf.float64),
-            scale_tril=tf.cast(tf.sqrt(largest_magnitude_covariance),tf.float64)*tf.linalg.cholesky(tf.Print(covmat,[covmat],summarize=100)),
+            scale_tril=tf.linalg.cholesky(covmat),
+            #scale_tril=tf.cast(tf.sqrt(largest_magnitude_covariance),tf.float64)*tf.linalg.cholesky(tf.Print(covmat,[covmat],summarize=100)),
             #scale_tril=tf.sqrt(largest_magnitude_covariance)*tf.linalg.cholesky(tf.Print(covmat,[covmat],summarize=100)),
             #scale_tril=tf.sqrt(largest_magnitude_covariance)*tf.linalg.cholesky(tf.Print(covmat, [tf.check_numerics(covmat,message='covmat is nan or inf'),'Determinants:',tf.linalg.det(covmat),'max_singvals,min_singvals,cond_numbers::',condition_number(covmat)],summarize=100,message='\n')),
             name='data_component'),
@@ -105,21 +106,22 @@ def centeredMarginalizedIndependentFactorAnalysisTest(n_observations, mixture_we
 
     all_mixture_weights = tf.reduce_prod(tf.reduce_sum(combinations * mixture_weights[None, :, :], axis=-1), axis=1)
     all_mixture_vars = tf.reduce_sum(combinations * mixture_component_var, axis=-1)
-    factor_loadings /= tf.linalg.norm(factor_loadings, axis=1, keepdims=True)
+    #factor_loadings /= tf.linalg.norm(factor_loadings, axis=1, keepdims=True)
     cov_factor = tf.einsum('sf,cs->csf', factor_loadings, all_mixture_vars)
     covmat = tf.einsum('csf,csg->cfg', cov_factor, cov_factor) + tf.diag(jitter + data_var)[None,:,:]
     
     # conditioning of covariance matrices
-    largest_magnitude_covariance = tf.reduce_max(tf.abs(covmat),axis=[1,2],keepdims=True)
-    covmat /= largest_magnitude_covariance
-    covmat = tf.cast(covmat,tf.float64)
+    #largest_magnitude_covariance = tf.reduce_max(tf.abs(covmat),axis=[1,2],keepdims=True)
+    #covmat /= largest_magnitude_covariance
+    #covmat = tf.cast(covmat,tf.float64)
     #covmat /= tf.Print(largest_magnitude_covariance,[largest_magnitude_covariance],summarize=100,message='\n Normalizing covmats by')
 
     data = ed.MixtureSameFamily(
         mixture_distribution=tfd.Categorical(probs=all_mixture_weights),
         components_distribution=tfd.MultivariateNormalTriL(
             loc=tf.zeros((n_combinations, n_features),dtype=tf.float64),
-            scale_tril=tf.cast(tf.sqrt(largest_magnitude_covariance),tf.float64)*tf.linalg.cholesky(tf.Print(covmat,[covmat],summarize=100)),
+            scale_tril=tf.linalg.cholesky(covmat),
+            #scale_tril=tf.cast(tf.sqrt(largest_magnitude_covariance),tf.float64)*tf.linalg.cholesky(tf.Print(covmat,[covmat],summarize=100)),
             #scale_tril=tf.sqrt(largest_magnitude_covariance)*tf.linalg.cholesky(tf.Print(covmat,[covmat],summarize=100)),
             #scale_tril=tf.sqrt(largest_magnitude_covariance)*tf.linalg.cholesky(tf.Print(covmat, [tf.check_numerics(covmat,message='covmat is nan or inf'),'Determinants:',tf.linalg.det(covmat),'max_singvals,min_singvals,cond_numbers::',condition_number(covmat)],summarize=100,message='\n')),
             name='data_component'),
