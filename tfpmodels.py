@@ -87,7 +87,7 @@ def centeredMarginalizedIndependentFactorAnalysis(n_observations = 1000, n_sourc
         mixture_distribution=tfd.Categorical(probs=all_mixture_weights),
         components_distribution=tfd.MultivariateNormalTriL(
             loc=tf.zeros((n_combinations, n_features),dtype=tf.float64),
-            scale_tril=tf.linalg.cholesky(covmat),
+            scale_tril=tf.cholesky(covmat),
             #scale_tril=tf.cast(tf.sqrt(largest_magnitude_covariance),tf.float64)*tf.linalg.cholesky(tf.Print(covmat,[covmat],summarize=100)),
             #scale_tril=tf.sqrt(largest_magnitude_covariance)*tf.linalg.cholesky(tf.Print(covmat,[covmat],summarize=100)),
             #scale_tril=tf.sqrt(largest_magnitude_covariance)*tf.linalg.cholesky(tf.Print(covmat, [tf.check_numerics(covmat,message='covmat is nan or inf'),'Determinants:',tf.linalg.det(covmat),'max_singvals,min_singvals,cond_numbers::',condition_number(covmat)],summarize=100,message='\n')),
@@ -163,7 +163,7 @@ def mixtureOfGaussians(n_observations = 1000, n_components = 2, n_features = 2, 
                 mixture_distribution=tfd.Categorical(probs=mixture_weights),
                 components_distribution=tfd.MultivariateNormalTriL(
                     loc=mixture_component_means,
-                    scale_tril=mixture_component_covariances_cholesky + 1e-1*tf.eye(n_features, dtype='float64')[None,:,:],
+                    scale_tril=mixture_component_covariances_cholesky,
                     name='component'), sample_shape=(n_observations,), name='data')
 
 def lowRankMixtureOfGaussians(n_observations = 1000, n_components = 2, n_sources = 2, n_features = 2, mixture_component_means_mean = 0., mixture_component_means_var = 1., mixture_component_covariances_cholesky_df = None, mixture_component_covariances_cholesky_scale_tril=None,mixture_weights_concentration=None, data_var_concentration=1., data_var_rate=1.):

@@ -33,20 +33,35 @@ class Mapper:
             self.unconstrained_variable_shapes = {key: self.transforms[key].inverse_event_shape(val) for key, val in self.variable_shapes.items()}
             self.unconstrained_variables = {key: tf.get_variable(key, shape=self.unconstrained_variable_shapes[key], dtype='float64') for key in self.variable_names}
             self.variables = {key: self.transforms[key].forward(val) for key, val in self.unconstrained_variables.items()}
-        
+
+
     def get_bijector(self, random_variable):
-        shift = tf.convert_to_tensor(1e-3,dtype=tf.float64)
+        positivity_shift = tf.convert_to_tensor(1e-3,dtype=tf.float64)
+        diag_shift = tf.convert_to_tensor(1.,dtype=tf.float64)
+        
         distribution = random_variable.distribution
         if distribution.__class__ in self._positive_distributions:
             #return tfb.Softplus() #tfp.trainable_distributions.softplus_and_shift(variable)
-            return tfb.Chain([tfb.AffineScalar(shift=shift), tfb.Exp()], name="scaled_sigmoid")
+            return tfb.Chain([tfb.AffineScalar(shift=positivity_shift), tfb.Exp()], name="scaled_sigmoid")
             #return tfb.Chain([tfb.Affine(shift=1e-4), tfb.Softplus()], name="softplus_and_shift")
         elif distribution.__class__ in self._simplex_distributions:
             return SoftmaxCentered()
         elif distribution.__class__ in self._tril_distributions:
-            return tfb.ScaleTriL(diag_shift=shift)
+            return tfb.ScaleTriL(diag_shift=diag_shift)
         else:
             return tfb.Identity()
+
+    def replace_bijector(self, key, bijector):
+        self.transforms.update({key: bijector})
+        self.unconstrained_variable_shapes.update({key: self.transforms[key].inverse_event_shape(self.variable_shapes[key])})
+        self.unconstrained_variables.update({key: tf.get_variable(key, shape=self.unconstrained_variable_shapes[key], dtype='float64')})
+        self.variables.update({key: self.transforms[key].forward(self.unconstrained_variables[key])})
+
+    def append_bijector(self, key, bijector, prepend=False):
+        if prepend:
+            self.replace_bijector(key, tfb.Chain([self.transforms[key], bijector], name='{}_bijector_chain'.format(key)))
+        else:
+            self.replace_bijector(key, tfb.Chain([bijector, self.transforms[key]], name='{}_bijector_chain'.format(key)))
 
 #    def get_bijector64(self, random_variable):
 #        shift = tf.convert_to_tensor(1e-3,dtype=tf.float64)
@@ -82,3 +97,11 @@ class Mapper:
         for key, val in kwargs.items():
             assign_ops.append(tf.assign(self.unconstrained_variables[key], self.transforms[key].inverse(val)))
         return tf.group(assign_ops)
+
+#class IFA_EM(Mapper):
+#    def __init__(self, model, model_name, observed_variable_names, *args, **kwargs):
+#        super(IFA_EM).__init__(model, model_name, observed_variable_names, *args, **kwargs)
+
+        
+        #self.posterior_eval = 
+        #self.po

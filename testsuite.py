@@ -55,19 +55,56 @@ if __name__ == '__main__':
     n_features = 2
     n_clusters = 2
     n_sources = 2
+    n_components_in_mixture = 3
     n_restarts = 7
     n_datasets = 10
 
     #deviations = np.logspace(-3,1,5, dtype='float32')
     deviations = np.logspace(-1,1,10, dtype='float64') # larger deviation means better snr in both models
 
-    models = []
-    models.append(Mapper(mixtureOfGaussians, 'mog', observed_variable_names=['data'], n_observations=N, n_components=n_clusters, n_features=n_features))        
-    models.append(Mapper(centeredMarginalizedIndependentFactorAnalysis, 'cifa', observed_variable_names=['data'], n_observations=N, n_components_in_mixture = n_clusters, n_sources=n_sources, n_features=n_features, mixture_component_var_concentration=.1, mixture_component_var_rate=1.,data_var_concentration=.1,data_var_rate=10.))
-    model_names = [model.model_name for model in models]
     data_generating_models = ['mog','cifa']
+    model_names = ['cifa']
+    models = []
+    test_models = []
+    assign_defaults = []
+    data_train = tf.placeholder(shape=(N,n_features), dtype='float64') 
+    data_test = tf.placeholder(shape=(Ntest,n_features), dtype='float64')
+    cluster_centers = tf.placeholder(shape=(n_clusters,n_features), dtype='float64')
+    ica_directions = tf.placeholder(shape=(2,n_features), dtype='float64')
+    data_variance = tf.placeholder(shape=(), dtype='float64')
     
-    test_models = [mixtureOfGaussiansTest,centeredMarginalizedIndependentFactorAnalysisTest]
+    for name in model_names:
+        if name == 'mog':
+            model = Mapper(mixtureOfGaussians, 'mog', 
+            observed_variable_names=['data'], 
+            n_observations=N, 
+            n_components=n_clusters, 
+            n_features=n_features)
+            test_model = mixtureOfGaussiansTest
+            assign_default = model.assigner(mixture_component_covariances_cholesky=10*tf.tile(tf.eye(n_features, dtype='float64')[None],[n_clusters,1,1]),
+                mixture_component_means=cluster_centers)
+        if name == 'cifa':
+            model = Mapper(centeredMarginalizedIndependentFactorAnalysis, 'cifa', 
+                observed_variable_names=['data'], 
+                n_observations=N, 
+                n_components_in_mixture = n_components_in_mixture, 
+                n_sources=n_sources, 
+                n_features=n_features, 
+                mixture_component_var_concentration=.1, 
+                mixture_component_var_rate=1.,
+                data_var_concentration=.1,
+                data_var_rate=10.)
+            tril = np.tril(np.ones((n_components_in_mixture, n_components_in_mixture)))
+            scale = tf.linalg.LinearOperatorLowerTriangular(tril)
+            affine = tfp.bijectors.AffineLinearOperator(np.zeros(n_components_in_mixture), scale)
+            model.append_bijector('mixture_component_var', affine, prepend=False)
+            test_model = centeredMarginalizedIndependentFactorAnalysisTest
+            assign_default = model.assigner(data_var=tf.ones((n_features,), dtype='float64'), 
+                factor_loadings=ica_directions)
+        models.append(model)    
+        test_models.append(test_model)
+        assign_defaults.append(assign_default)        
+    
     train_neg_log_lik_op = []
     test_neg_log_lik_op = []
     ppc_op = []
@@ -75,23 +112,18 @@ if __name__ == '__main__':
     opt = {}
     cg_opt = {}
     optstep = {}
+    adam_opt = {}
 
-    data_train = tf.placeholder(shape=(N,n_features), dtype='float64') 
-    data_test = tf.placeholder(shape=(Ntest,n_features), dtype='float64')
     for model, test_model in zip(models, test_models):
         train_neg_log_lik_op.append(neg_log_lik(model.variables,test_model,data_train))
         test_neg_log_lik_op.append(neg_log_lik(model.variables,test_model,data_test))
         ppc_op.append(MAP_model(model.variables,test_model,N))
-        loss[model.model_name], opt[model.model_name] = model.pybfgs_optimizer(data=data_train)
+        loss[model.model_name], opt[model.model_name] = model.l_bfgs_optimizer(data=data_train)
         _, cg_opt[model.model_name] = model.cg_optimizer(data=data_train)
+        _, adam_opt[model.model_name] = model.adam_optimizer(data=data_train)
+        
         optstep[model.model_name] = tf.contrib.opt.ScipyOptimizerInterface(loss[model.model_name], var_list=list(model.unconstrained_variables.values()), options={'maxiter': 1})
-    cluster_centers = tf.placeholder(shape=(n_clusters,n_features), dtype='float64')
-    ica_directions = tf.placeholder(shape=(2,n_features), dtype='float64')
-    data_variance = tf.placeholder(shape=(), dtype='float64')
-    assign_defaults = [None,None]
-    assign_defaults[0] = models[0].assigner(mixture_component_covariances_cholesky=10*tf.tile(tf.eye(n_features, dtype='float64')[None],[n_clusters,1,1]),mixture_component_means=cluster_centers)
-    assign_defaults[1] = models[1].assigner(data_var=1e-1*data_variance*tf.ones((n_features,), dtype='float64'), factor_loadings=ica_directions)
-
+    
     
     experimental_variable_prealloc = np.zeros((len(data_generating_models), len(models), len(deviations), n_restarts, n_datasets))
     experimental_variable_dims = ['data_generating_model','model', 'deviation', 'restart', 'dataset']
@@ -142,12 +174,17 @@ if __name__ == '__main__':
                     sess.run(all_init)
                     sess.run(assign_defaults, feed_dict={cluster_centers: kmeans_cluster_centers, ica_directions: init_directions, data_variance: current_data_variance})
                     for i,model in enumerate(models): 
-                        print('g={},x={},d={},r={},i={}'.format(data_generating_model, deviation, dataset, restart, i))
+                        print('g={},m={},x={},d={},r={}'.format(data_generating_model, model.model_name, deviation, dataset, restart))
+                        #for step in range(1000):
+                        #    sess.run(adam_opt[model.model_name], feed_dict={data_train: data[:N]})
                         try: 
                             opt[model.model_name].minimize(feed_dict={data_train: data[:N]}, session=sess, loss_callback=callback, fetches=[model.variables])
                         except:
-                            print('retrying')
-                            cg_opt[model.model_name].minimize(feed_dict={data_train: data[:N]}, session=sess, loss_callback=callback, fetches=[model.variables])
+                            optstep[model.model_name].minimize(feed_dict={data_train: data[:N]}, session=sess, loss_callback=callback, fetches=[model.variables])
+                            opt[model.model_name].minimize(feed_dict={data_train: data[:N]}, session=sess, loss_callback=callback, fetches=[model.variables])
+                            
+                        #    print('retrying')
+                        #    cg_opt[model.model_name].minimize(feed_dict={data_train: data[:N]}, session=sess, loss_callback=callback, fetches=[model.variables])
                         MAP_parameter, converged_loss = sess.run([model.variables, loss[model.model_name]], feed_dict={data_train: data[:N]})
                         MAP_parameters[(data_generating_model,model.model_name, deviation, restart, dataset)] = MAP_parameter
                         ppc[(data_generating_model,model.model_name, deviation, restart, dataset)] = sess.run(ppc_op[i])
