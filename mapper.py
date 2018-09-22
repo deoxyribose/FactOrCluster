@@ -54,8 +54,9 @@ class Mapper:
     def replace_bijector(self, key, bijector):
         self.transforms.update({key: bijector})
         self.unconstrained_variable_shapes.update({key: self.transforms[key].inverse_event_shape(self.variable_shapes[key])})
-        self.unconstrained_variables.update({key: tf.get_variable(key, shape=self.unconstrained_variable_shapes[key], dtype='float64')})
-        self.variables.update({key: self.transforms[key].forward(self.unconstrained_variables[key])})
+        with tf.variable_scope(self.model_name, reuse=tf.AUTO_REUSE):
+            self.unconstrained_variables.update({key: tf.get_variable(key, shape=self.unconstrained_variable_shapes[key], dtype='float64')})
+            self.variables.update({key: self.transforms[key].forward(self.unconstrained_variables[key])})
 
     def append_bijector(self, key, bijector, prepend=False):
         if prepend:
