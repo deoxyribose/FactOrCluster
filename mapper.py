@@ -37,7 +37,7 @@ class Mapper:
 
     def get_bijector(self, random_variable):
         positivity_shift = tf.convert_to_tensor(1e-3,dtype=tf.float64)
-        diag_shift = tf.convert_to_tensor(1.,dtype=tf.float64)
+        diag_shift = tf.convert_to_tensor(1e-3,dtype=tf.float64)
         
         distribution = random_variable.distribution
         if distribution.__class__ in self._positive_distributions:
@@ -98,6 +98,26 @@ class Mapper:
         for key, val in kwargs.items():
             assign_ops.append(tf.assign(self.unconstrained_variables[key], self.transforms[key].inverse(val)))
         return tf.group(assign_ops)
+
+    def test_model(self, inferred_latent_variables=None):
+        if inferred_latent_variables is None:
+            inferred_latent_variables = self.variables
+        def replace_latents(**MAP_parameter):
+            """When called inside a with ed.interception clause, this replaces sampling ops of variable "name", with the corresponding tensor in inferred_latent_variables"""
+            def interceptor(model, *args, **kwargs):
+                name = kwargs.pop("name")
+                for key in inferred_latent_variables:
+                    if name == key:
+                        kwargs["value"] = inferred_latent_variables[key]
+                return model(*args, **kwargs)
+            return interceptor
+        with ed.interception(replace_latents(**inferred_latent_variables)):
+            return self.model(**self._kwargs)
+
+    def neg_log_lik(self, data, inferred_latent_variables=None):
+        model_MAP = self.test_model(inferred_latent_variables)
+        return -tf.reduce_mean(model_MAP.distribution.log_prob(data))
+
 
 #class IFA_EM(Mapper):
 #    def __init__(self, model, model_name, observed_variable_names, *args, **kwargs):
