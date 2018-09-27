@@ -102,7 +102,7 @@ class Mapper:
     def test_model(self, inferred_latent_variables=None):
         if inferred_latent_variables is None:
             inferred_latent_variables = self.variables
-        def replace_latents(**MAP_parameter):
+        def replace_latents(**inferred_latent_variables):
             """When called inside a with ed.interception clause, this replaces sampling ops of variable "name", with the corresponding tensor in inferred_latent_variables"""
             def interceptor(model, *args, **kwargs):
                 name = kwargs.pop("name")
