@@ -8,7 +8,6 @@ from future_features import tape
 from mapper import Mapper
 
 from tfpmodels import centeredMarginalizedIndependentFactorAnalysis, mixtureOfGaussians
-from tfpmodels import centeredMarginalizedIndependentFactorAnalysisTest, mixtureOfGaussiansTest
 
 import pandas as pd
 import xarray as xr
@@ -23,28 +22,6 @@ store = []
 def callback(parameters):
     store.append(parameters)
 
-def MAP_model(MAP_parameter,model,N):
-    # MAP_parameter for ifa includes sources, but ifa_test doesn't take it as input
-    MAP_parameter = dict(MAP_parameter)
-    # model here is observation model
-    # for MoGs, z is already collapsed, so we're evaluating int(p(x_new|theta,z)p(z),dz)
-    # for ifa, z is sampled mc_samples times, so we're evaluating int(p(x_new|theta,z_new)q(z),dz) where q(z) is mc_samples pointmasses.
-    #try:
-    #    model_MAP = model(n_observations = N, mc_samples=1000, **MAP_parameter)
-    #except TypeError:
-    #    model_MAP = model(n_observations = N, **MAP_parameter)
-    #return model_MAP
-    return model(n_observations = N, **MAP_parameter)
-
-def neg_log_lik(MAP_parameter,model,data):
-    MAP_parameter = {key: MAP_parameter[key] for key in MAP_parameter}
-    #data = tf.convert_to_tensor(data,tf.float32)
-    N = data.shape[0]
-    model_MAP = MAP_model(MAP_parameter,model,N)
-    print(list(MAP_parameter.keys()))
-    print(model_MAP.distribution.dtype)
-    return -tf.reduce_mean(model_MAP.distribution.log_prob(data))
-
 if __name__ == '__main__':
 
     N = 1000
@@ -58,12 +35,13 @@ if __name__ == '__main__':
     n_components_in_mixture = 3
     n_restarts = 7
     n_datasets = 10
+    max_attempts = 10
 
     #deviations = np.logspace(-3,1,5, dtype='float32')
     deviations = np.logspace(-1,1,10, dtype='float64') # larger deviation means better snr in both models
 
     data_generating_models = ['mog','cifa']
-    model_names = ['cifa']
+    model_names = ['mog','cifa']
     models = []
     test_models = []
     assign_defaults = []
@@ -80,7 +58,6 @@ if __name__ == '__main__':
             n_observations=N, 
             n_components=n_clusters, 
             n_features=n_features)
-            test_model = mixtureOfGaussiansTest
             assign_default = model.assigner(mixture_component_covariances_cholesky=10*tf.tile(tf.eye(n_features, dtype='float64')[None],[n_clusters,1,1]),
                 mixture_component_means=cluster_centers)
         if name == 'cifa':
@@ -98,11 +75,9 @@ if __name__ == '__main__':
             scale = tf.linalg.LinearOperatorLowerTriangular(tril)
             affine = tfp.bijectors.AffineLinearOperator(np.zeros(n_components_in_mixture), scale)
             model.append_bijector('mixture_component_var', affine, prepend=False)
-            test_model = centeredMarginalizedIndependentFactorAnalysisTest
             assign_default = model.assigner(data_var=tf.ones((n_features,), dtype='float64'), 
                 factor_loadings=ica_directions)
         models.append(model)    
-        test_models.append(test_model)
         assign_defaults.append(assign_default)        
     
     train_neg_log_lik_op = []
@@ -114,10 +89,10 @@ if __name__ == '__main__':
     optstep = {}
     adam_opt = {}
 
-    for model, test_model in zip(models, test_models):
-        train_neg_log_lik_op.append(neg_log_lik(model.variables,test_model,data_train))
-        test_neg_log_lik_op.append(neg_log_lik(model.variables,test_model,data_test))
-        ppc_op.append(MAP_model(model.variables,test_model,N))
+    for model in models:
+        train_neg_log_lik_op.append(model.neg_log_lik(data_train))
+        test_neg_log_lik_op.append(model.neg_log_lik(data_test))
+        ppc_op.append(model.test_model())
         loss[model.model_name], opt[model.model_name] = model.l_bfgs_optimizer(data=data_train)
         _, cg_opt[model.model_name] = model.cg_optimizer(data=data_train)
         _, adam_opt[model.model_name] = model.adam_optimizer(data=data_train)
@@ -154,7 +129,7 @@ if __name__ == '__main__':
                 data_tf[data_generating_model] = mixtureOfGaussians(n_observations=N + Ntest, n_components=n_clusters, n_features=n_features, mixture_component_means_var=placeholder_deviation)
         else:
             with tape() as reference_tf:
-                data_tf[data_generating_model] = centeredMarginalizedIndependentFactorAnalysis(n_observations=N + Ntest, n_components_in_mixture = n_clusters, n_sources=n_clusters, n_features=n_features, mixture_component_var_concentration=.1, mixture_component_var_rate=1.,data_var_concentration=.1,data_var_rate=1./placeholder_deviation)
+                data_tf[data_generating_model] = centeredMarginalizedIndependentFactorAnalysis(n_observations=N + Ntest, n_components_in_mixture = n_components_in_mixture, n_sources=n_clusters, n_features=n_features, mixture_component_var_concentration=.1, mixture_component_var_rate=1.,data_var_concentration=.1,data_var_rate=1./placeholder_deviation)
     for data_generating_model in data_generating_models:    
         for deviation in deviations:
             for dataset in range(n_datasets):
@@ -177,11 +152,16 @@ if __name__ == '__main__':
                         print('g={},m={},x={},d={},r={}'.format(data_generating_model, model.model_name, deviation, dataset, restart))
                         #for step in range(1000):
                         #    sess.run(adam_opt[model.model_name], feed_dict={data_train: data[:N]})
-                        try: 
-                            opt[model.model_name].minimize(feed_dict={data_train: data[:N]}, session=sess, loss_callback=callback, fetches=[model.variables])
-                        except:
-                            optstep[model.model_name].minimize(feed_dict={data_train: data[:N]}, session=sess, loss_callback=callback, fetches=[model.variables])
-                            opt[model.model_name].minimize(feed_dict={data_train: data[:N]}, session=sess, loss_callback=callback, fetches=[model.variables])
+                        attempt = 0
+                        while attempt < max_attempts:
+                            try:
+                                opt[model.model_name].minimize(feed_dict={data_train: data[:N]}, session=sess, loss_callback=callback, fetches=[model.variables])
+                                break
+                            except:
+                                # optstep takes one bfgs step in hopes of escaping bad initialization
+                                print("Previous optimization attempt failed, taking one BFGS step and trying again with L-BFGS")
+                                optstep[model.model_name].minimize(feed_dict={data_train: data[:N]}, session=sess, loss_callback=callback, fetches=[model.variables])
+                                attempt += 1
                             
                         #    print('retrying')
                         #    cg_opt[model.model_name].minimize(feed_dict={data_train: data[:N]}, session=sess, loss_callback=callback, fetches=[model.variables])
