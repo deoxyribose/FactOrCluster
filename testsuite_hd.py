@@ -29,10 +29,10 @@ if __name__ == '__main__':
 
     initial_direction = 'ica'
 
-    n_features = 2
-    n_clusters = 2
-    n_sources = 2
-    n_components_in_mixture = 3
+    n_features = 10
+    n_clusters = 6
+    n_sources = 6
+    n_components_in_mixture = 6
     n_restarts = 7
     n_datasets = 10
     max_attempts = 10
@@ -48,8 +48,8 @@ if __name__ == '__main__':
     data_train = tf.placeholder(shape=(N,n_features), dtype='float64') 
     data_test = tf.placeholder(shape=(Ntest,n_features), dtype='float64')
     cluster_centers = tf.placeholder(shape=(n_clusters,n_features), dtype='float64')
-    ica_directions = tf.placeholder(shape=(2,n_features), dtype='float64')
-    data_variance = tf.placeholder(shape=(), dtype='float64')
+    ica_directions = tf.placeholder(shape=(n_sources,n_features), dtype='float64')
+    #data_variance = tf.placeholder(shape=(), dtype='float64')
     
     for name in model_names:
         if name == 'mog':
@@ -143,11 +143,12 @@ if __name__ == '__main__':
                 else:
                     init_directions = np.random.randn(n_sources, n_features).astype('float64')
                 init_directions = init_directions/np.linalg.norm(init_directions,axis=1, keepdims=True)
-                current_data_variance = data[:N].var()
+                #current_data_variance = data[:N].var()
 
                 for restart in range(n_restarts):        
                     sess.run(all_init)
-                    sess.run(assign_defaults, feed_dict={cluster_centers: kmeans_cluster_centers, ica_directions: init_directions, data_variance: current_data_variance})
+                    sess.run(assign_defaults, feed_dict={cluster_centers: kmeans_cluster_centers, ica_directions: init_directions})
+                    #sess.run(assign_defaults, feed_dict={cluster_centers: kmeans_cluster_centers, ica_directions: init_directions, data_variance: current_data_variance})
                     for i,model in enumerate(models): 
                         print('g={},m={},x={},d={},r={}'.format(data_generating_model, model.model_name, deviation, dataset, restart))
                         #for step in range(1000):
@@ -173,5 +174,5 @@ if __name__ == '__main__':
                         train_neg_log_lik.loc[{'data_generating_model': data_generating_model, 'model': model.model_name, 'deviation': deviation, 'restart': restart, 'dataset': dataset}] = sess.run(train_neg_log_lik_op[i], feed_dict={data_train: data[:N]})
                         test_neg_log_lik.loc[{'data_generating_model': data_generating_model, 'model': model.model_name, 'deviation': deviation, 'restart': restart, 'dataset': dataset}] = sess.run(test_neg_log_lik_op[i], feed_dict={data_test: data[N:]})
                         
-    pickle.dump([MAP_parameters,train_neg_log_joint,train_neg_log_lik,test_neg_log_lik],open( "mog_ifa_MAPparamaters_and_losses_on_synth_data.p", "wb" ) )
-    pickle.dump([ppc, data_store],open( "mog_ifa_MAP_ppc.p", "wb" ) )
+    pickle.dump([MAP_parameters,train_neg_log_joint,train_neg_log_lik,test_neg_log_lik],open( "mog_ifa_MAPparamaters_and_losses_on_synth_data_hd.p", "wb" ) )
+    pickle.dump([ppc, data_store],open( "mog_ifa_MAP_ppc_hd.p", "wb" ) )
