@@ -5,7 +5,7 @@ ed = tfp.edward2
 import numpy as np
 
 from future_features import tape
-from mapper import Mapper
+from mapper import Mapper, IFA_MAPEM
 
 from tfpmodels import centeredMarginalizedIndependentFactorAnalysis, mixtureOfGaussians
 
@@ -29,16 +29,16 @@ if __name__ == '__main__':
 
     initial_direction = 'ica'
 
-    n_features = 2
-    n_clusters = 2
+    n_features = 5
+    n_clusters = 4
     n_sources = 2
-    n_components_in_mixture = 3
-    n_restarts = 7
+    n_components_in_mixture = 2
+    n_restarts = 10
     n_datasets = 10
-    max_attempts = 10
+    max_attempts = 3
 
     #deviations = np.logspace(-3,1,5, dtype='float32')
-    deviations = np.logspace(-1,1,10, dtype='float64') # larger deviation means better snr in both models
+    deviations = np.logspace(-1,1,20, dtype='float64') # larger deviation means better snr in both models
 
     data_generating_models = ['mog','cifa']
     model_names = ['mog','cifa']
@@ -61,22 +61,22 @@ if __name__ == '__main__':
             assign_default = model.assigner(mixture_component_covariances_cholesky=10*tf.tile(tf.eye(n_features, dtype='float64')[None],[n_clusters,1,1]),
                 mixture_component_means=cluster_centers)
         if name == 'cifa':
-            model = Mapper(centeredMarginalizedIndependentFactorAnalysis, 'cifa', 
+            model = IFA_MAPEM(centeredMarginalizedIndependentFactorAnalysis, 'cifa', 
                 observed_variable_names=['data'], 
                 n_observations=N, 
                 n_components_in_mixture = n_components_in_mixture, 
                 n_sources=n_sources, 
                 n_features=n_features, 
-                mixture_component_var_concentration=.1, 
+                mixture_component_var_concentration=3., 
                 mixture_component_var_rate=1.,
-                data_var_concentration=.1,
-                data_var_rate=10.)
-            tril = np.tril(np.ones((n_components_in_mixture, n_components_in_mixture)))
-            scale = tf.linalg.LinearOperatorLowerTriangular(tril)
-            affine = tfp.bijectors.AffineLinearOperator(np.zeros(n_components_in_mixture), scale)
-            model.append_bijector('mixture_component_var', affine, prepend=False)
-            assign_default = model.assigner(data_var=tf.ones((n_features,), dtype='float64'), 
-                factor_loadings=ica_directions)
+                data_var_concentration=3.,
+                data_var_rate=1.)
+            #tril = np.tril(np.ones((n_components_in_mixture, n_components_in_mixture)))
+            #scale = tf.linalg.LinearOperatorLowerTriangular(tril)
+            #affine = tfp.bijectors.AffineLinearOperator(np.zeros(n_components_in_mixture), scale)
+            #model.append_bijector('mixture_component_var', affine, prepend=False)
+            assign_default = model.assigner(data_var=0.1*tf.ones((), dtype='float64'), 
+               factor_loadings=ica_directions)
         models.append(model)    
         assign_defaults.append(assign_default)        
     
@@ -88,7 +88,8 @@ if __name__ == '__main__':
     cg_opt = {}
     optstep = {}
     adam_opt = {}
-
+    reset = None
+    emsteps = None
     for model in models:
         train_neg_log_lik_op.append(model.neg_log_lik(data_train))
         test_neg_log_lik_op.append(model.neg_log_lik(data_test))
@@ -96,9 +97,10 @@ if __name__ == '__main__':
         loss[model.model_name], opt[model.model_name] = model.l_bfgs_optimizer(data=data_train)
         _, cg_opt[model.model_name] = model.cg_optimizer(data=data_train)
         _, adam_opt[model.model_name] = model.adam_optimizer(data=data_train)
-        
         optstep[model.model_name] = tf.contrib.opt.ScipyOptimizerInterface(loss[model.model_name], var_list=list(model.unconstrained_variables.values()), options={'maxiter': 1})
-    
+        if model.model_name == 'cifa':
+            _, reset, emsteps = model.MAPEM_optimizer(data=data_train)
+            emproposal = model.MAPEMsteps(data=data_train)
     
     experimental_variable_prealloc = np.zeros((len(data_generating_models), len(models), len(deviations), n_restarts, n_datasets))
     experimental_variable_dims = ['data_generating_model','model', 'deviation', 'restart', 'dataset']
@@ -114,7 +116,7 @@ if __name__ == '__main__':
     placeholder_deviation = tf.placeholder(dtype='float64')
 
     fica = FastICA(n_components=n_sources)
-    #pca = PCA(n_components=n_sources)
+    pca = PCA(n_components=n_sources)
     kmeans = KMeans(n_clusters=n_clusters)
 
     sess = tf.Session()
@@ -122,14 +124,15 @@ if __name__ == '__main__':
     all_init = tf.global_variables_initializer()
     
     data_tf = {}
-
+    max_attempt_registered = 1
+    
     for data_generating_model in data_generating_models:
         if data_generating_model == 'mog':
             with tape() as reference_tf:
                 data_tf[data_generating_model] = mixtureOfGaussians(n_observations=N + Ntest, n_components=n_clusters, n_features=n_features, mixture_component_means_var=placeholder_deviation)
         else:
             with tape() as reference_tf:
-                data_tf[data_generating_model] = centeredMarginalizedIndependentFactorAnalysis(n_observations=N + Ntest, n_components_in_mixture = n_components_in_mixture, n_sources=n_clusters, n_features=n_features, mixture_component_var_concentration=.1, mixture_component_var_rate=1.,data_var_concentration=.1,data_var_rate=1./placeholder_deviation)
+                data_tf[data_generating_model] = centeredMarginalizedIndependentFactorAnalysis(n_observations=N + Ntest, n_components_in_mixture = n_components_in_mixture, n_sources=n_clusters, n_features=n_features, mixture_component_var_concentration=3., mixture_component_var_rate=1.,data_var_concentration=3.,data_var_rate=2.*placeholder_deviation)
     for data_generating_model in data_generating_models:    
         for deviation in deviations:
             for dataset in range(n_datasets):
@@ -154,8 +157,14 @@ if __name__ == '__main__':
                         #    sess.run(adam_opt[model.model_name], feed_dict={data_train: data[:N]})
                         attempt = 0
                         while attempt < max_attempts:
+                            if model.model_name == 'cifa':
+                                for j in range(50):
+                                    sess.run(reset)
+                                    #emprop = sess.run(emproposal, feed_dict={data_train: data[:N]})
+                                    sess.run(emsteps, feed_dict={data_train: data[:N]})
                             try:
                                 opt[model.model_name].minimize(feed_dict={data_train: data[:N]}, session=sess, loss_callback=callback, fetches=[model.variables])
+                                max_attempt_registered = max(attempt, max_attempt_registered)
                                 break
                             except:
                                 # optstep takes one bfgs step in hopes of escaping bad initialization
@@ -173,5 +182,5 @@ if __name__ == '__main__':
                         train_neg_log_lik.loc[{'data_generating_model': data_generating_model, 'model': model.model_name, 'deviation': deviation, 'restart': restart, 'dataset': dataset}] = sess.run(train_neg_log_lik_op[i], feed_dict={data_train: data[:N]})
                         test_neg_log_lik.loc[{'data_generating_model': data_generating_model, 'model': model.model_name, 'deviation': deviation, 'restart': restart, 'dataset': dataset}] = sess.run(test_neg_log_lik_op[i], feed_dict={data_test: data[N:]})
                         
-    pickle.dump([MAP_parameters,train_neg_log_joint,train_neg_log_lik,test_neg_log_lik],open( "mog_ifa_MAPparamaters_and_losses_on_synth_data.p", "wb" ) )
+    pickle.dump([MAP_parameters,train_neg_log_joint,train_neg_log_lik,test_neg_log_lik],open( "mog_ifa_MAPparameters_and_losses_on_synth_data.p", "wb" ) )
     pickle.dump([ppc, data_store],open( "mog_ifa_MAP_ppc.p", "wb" ) )

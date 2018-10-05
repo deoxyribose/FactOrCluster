@@ -133,7 +133,7 @@ class IFA_MAPEM(Mapper):
         factor_loadings = self.current['factor_loadings']
         data_var = self.current['data_var']
         
-        jitter = 0. #jitter is not automatically matched!
+        jitter = 1e-6  #jitter is not automatically matched!
         data = tf.convert_to_tensor(data, dtype='float64')
         n_observations = data.shape[0].value
         n_sources, n_components_in_mixture = mixture_component_var.shape.as_list()

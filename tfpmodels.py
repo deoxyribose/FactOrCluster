@@ -7,7 +7,7 @@ import numpy as np
 from itertools import product
 from future_features import tape
 
-jitter = 0.
+jitter = 1e-6
 
 def independentFactorAnalysis(n_observations = 1000, n_components_in_mixture = 2, n_sources = 2, n_features = 2, mixture_component_means_mean = 0., mixture_component_means_var = 1., mixture_component_var_concentration = 1., mixture_component_var_rate=1.,mixture_weights_concentration=None,data_var_concentration=1.,data_var_rate=1.):
     if mixture_weights_concentration is None:
