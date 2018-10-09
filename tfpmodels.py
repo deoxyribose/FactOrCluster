@@ -126,12 +126,11 @@ def projectedMixtureOfGaussians(n_observations = 1000, n_components = 2, n_sourc
 
     mixture_component_covariances = tf.einsum('bij,bjk->bik', mixture_component_covariances_cholesky,mixture_component_covariances_cholesky)
     projected_total_covariances = tf.einsum('bij,ik,jl->bkl', mixture_component_covariances, factor_loadings, factor_loadings) + (jitter + data_var)*tf.eye(n_features, dtype='float64')[None,:,:]
-    print(projected_total_covariances)
     data = ed.MixtureSameFamily(
         mixture_distribution=tfd.Categorical(probs=mixture_weights),
         components_distribution=tfd.MultivariateNormalTriL(loc=tf.einsum('sf,cs->cf',factor_loadings,mixture_component_means), 
         # the following einsum does something like this: [factor_loadings^T * mixture_component_covariances_cholesky[component,:,:] * factor_loadings for component in n_components]
-        scale_tril=tf.cholesky(projected_total_covariances), 
+        scale_tril=tf.cholesky(tf.Print(projected_total_covariances,[projected_total_covariances])), 
         name='component'), sample_shape=(n_observations,), name='data')
     return data
 
