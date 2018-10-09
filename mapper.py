@@ -7,7 +7,6 @@ import numpy as np
 from itertools import product
 from future_features import tape, SoftmaxCentered
 
-from tfpmodels import centeredMarginalizedIndependentFactorAnalysisTest
 from tfopt import PylbfgsInterface
 
 import pdb
