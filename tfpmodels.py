@@ -128,7 +128,9 @@ def projectedMixtureOfGaussians(n_observations = 1000, n_components = 2, n_sourc
     projected_total_covariances = tf.einsum('bij,ik,jl->bkl', mixture_component_covariances, factor_loadings, factor_loadings) + (jitter + data_var)*tf.eye(n_features, dtype='float64')[None,:,:]
     data = ed.MixtureSameFamily(
         mixture_distribution=tfd.Categorical(probs=mixture_weights),
-        components_distribution=tfd.MultivariateNormalTriL(loc=tf.einsum('sf,cs->cf',factor_loadings,mixture_component_means), 
+        # apparently einsum can't handle placeholders?
+        #components_distribution=tfd.MultivariateNormalTriL(loc=tf.einsum('sf,cs->cf',factor_loadings,mixture_component_means), 
+        components_distribution=tfd.MultivariateNormalTriL(loc=tf.matmul(mixture_component_means,factor_loadings), 
         # the following einsum does something like this: [factor_loadings^T * mixture_component_covariances_cholesky[component,:,:] * factor_loadings for component in n_components]
         scale_tril=tf.cholesky(tf.Print(projected_total_covariances,[projected_total_covariances])), 
         name='component'), sample_shape=(n_observations,), name='data')
