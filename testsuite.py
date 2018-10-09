@@ -7,7 +7,7 @@ import numpy as np
 from future_features import tape
 from mapper import Mapper, IFA_MAPEM
 
-from tfpmodels import centeredMarginalizedIndependentFactorAnalysis, mixtureOfGaussians
+from tfpmodels import centeredMarginalizedIndependentFactorAnalysis, projectedMixtureOfGaussians
 
 import pandas as pd
 import xarray as xr
@@ -33,8 +33,8 @@ if __name__ == '__main__':
     n_clusters = 4
     n_sources = 2
     n_components_in_mixture = 2
-    n_restarts = 10
-    n_datasets = 10
+    n_restarts = 3
+    n_datasets = 2
     max_attempts = 3
 
     #deviations = np.logspace(-3,1,5, dtype='float32')
@@ -47,18 +47,22 @@ if __name__ == '__main__':
     assign_defaults = []
     data_train = tf.placeholder(shape=(N,n_features), dtype='float64') 
     data_test = tf.placeholder(shape=(Ntest,n_features), dtype='float64')
-    cluster_centers = tf.placeholder(shape=(n_clusters,n_features), dtype='float64')
+    cluster_centers = tf.placeholder(shape=(n_clusters,n_sources), dtype='float64')
+    #cluster_centers = tf.placeholder(shape=(n_clusters,n_features), dtype='float64')
     ica_directions = tf.placeholder(shape=(2,n_features), dtype='float64')
     data_variance = tf.placeholder(shape=(), dtype='float64')
     
     for name in model_names:
         if name == 'mog':
-            model = Mapper(mixtureOfGaussians, 'mog', 
+            model = Mapper(projectedMixtureOfGaussians, 'mog', 
+            #model = Mapper(mixtureOfGaussians, 'mog', 
             observed_variable_names=['data'], 
             n_observations=N, 
             n_components=n_clusters, 
+            n_sources=n_sources,
             n_features=n_features)
-            assign_default = model.assigner(mixture_component_covariances_cholesky=10*tf.tile(tf.eye(n_features, dtype='float64')[None],[n_clusters,1,1]),
+            assign_default = model.assigner(mixture_component_covariances_cholesky=10*tf.tile(tf.eye(n_sources, dtype='float64')[None],[n_clusters,1,1]),
+            #assign_default = model.assigner(mixture_component_covariances_cholesky=10*tf.tile(tf.eye(n_features, dtype='float64')[None],[n_clusters,1,1]),
                 mixture_component_means=cluster_centers)
         if name == 'cifa':
             model = IFA_MAPEM(centeredMarginalizedIndependentFactorAnalysis, 'cifa', 
@@ -129,7 +133,7 @@ if __name__ == '__main__':
     for data_generating_model in data_generating_models:
         if data_generating_model == 'mog':
             with tape() as reference_tf:
-                data_tf[data_generating_model] = mixtureOfGaussians(n_observations=N + Ntest, n_components=n_clusters, n_features=n_features, mixture_component_means_var=placeholder_deviation)
+                data_tf[data_generating_model] = projectedMixtureOfGaussians(n_observations=N + Ntest, n_components=n_clusters, n_features=n_features, mixture_component_means_var=placeholder_deviation)
         else:
             with tape() as reference_tf:
                 data_tf[data_generating_model] = centeredMarginalizedIndependentFactorAnalysis(n_observations=N + Ntest, n_components_in_mixture = n_components_in_mixture, n_sources=n_clusters, n_features=n_features, mixture_component_var_concentration=3., mixture_component_var_rate=1.,data_var_concentration=3.,data_var_rate=2.*placeholder_deviation)
@@ -138,7 +142,8 @@ if __name__ == '__main__':
             for dataset in range(n_datasets):
                 data, reference = sess.run([data_tf[data_generating_model], reference_tf], feed_dict={placeholder_deviation: deviation})
                 
-                kmeans_cluster_centers = kmeans.fit(data[:N]).cluster_centers_
+                pca_transformed_data = pca.fit_transform(data[:N])
+                kmeans_cluster_centers = kmeans.fit(pca_transformed_data).cluster_centers_
                 if initial_direction.lower() == 'ica':
                     init_directions = fica.fit(data).mixing_.T
                 elif initial_direction.lower() == 'pca':
