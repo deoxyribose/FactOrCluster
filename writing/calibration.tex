@@ -1,0 +1,222 @@
+\documentclass{article}
+\input{preambles/basicmath}
+\input{preambles/extrasymbols}
+
+\newcommand{\mix}{\bm{A}}
+\newcommand{\source}{s}
+\newcommand{\sourcevec}{\bm{\source}}
+
+\newcommand{\obs}{y}
+\newcommand{\obsvec}{\bm{\obs}}
+\newcommand{\mean}{\mu}
+\newcommand{\meanvec}{\bm{\mean}}
+\newcommand{\scale}{\sigma}
+\newcommand{\scalesq}{\scale^2}
+\newcommand{\sourcecov}{\bm{\Sigma}}
+\newcommand{\weight}{w}
+\newcommand{\weightvec}{\bm{\weight}}
+\newcommand{\compweight}{\bar{\weight}}
+\newcommand{\compweightvec}{\bar{\bm{\weight}}}
+\newcommand{\assign}{z}
+\newcommand{\assignvec}{\bm{\assign}}
+\newcommand{\compmean}{\bar{\mean}}
+\newcommand{\compmeanvec}{\bar{\meanvec}}
+\newcommand{\compcov}{\bar{\bm{\Sigma}}}
+\newcommand{\compscalesq}{\bar{{\scale}}^2}
+\newcommand{\noisecov}{\bm{\Lambda}}
+\newcommand{\noisescalesq}{\lambda^2}
+\newcommand{\noisevec}{\bm{e}}
+
+\begin{document}
+Gaussian mixtures, factor models, independent factor analysis, and mixtures of factor analyzers are all different restrictive types of Gaussian mixtures with density
+\begin{equation}
+p(\obsvec_n)=\sum_{q=1}^{Q}\compweight_{q}\gaussrnd(\obsvec_n|\compmeanvec_q,\compcov_q)
+\end{equation} 
+
+The mean and second moment of a Gaussian mixture is given by
+\begin{align}
+\E{\obsvec_n}=&\sum_{q=1}^{Q}\compweight_q\compmeanvec_q\\
+\E{\obsvec_n\obsvec_n\T}=&\sum_{q=1}^{Q}\compweight_q(\compcov_q + \compmeanvec_q\compmeanvec_q\T)
+\end{align}
+The covariance then follows from the standard definition,
+\begin{equation}
+\Cov{\obsvec_n}=\E{\obsvec_n\obsvec_n\T}-\E{\obsvec_n}\E{\obsvec_n}\T.
+\end{equation}
+In the above we implicitly conditioned on a number of hyperparameters. If we assume that they are all independent and that $\E{\compweight_q}=1/Q$ and $\E{\compmeanvec_q}=\bm{0}$ and $\E{\compmeanvec_q\compmeanvec_q\T}=\noisecov_{\compmean}$, then
+\begin{align}
+\E{\obsvec_n}=&\bm{0}\\
+\label{eq:margcov}
+\E{\obsvec_n\obsvec_n\T}=\Cov{\obsvec_n}=&\noisecov_{\compmean}+\frac{1}{Q}\sum_{q=1}^{Q}\E{\compcov_q}
+\end{align} 
+
+
+
+%\subsection{Zero-mean Mixtures and Factor Analysis}
+If $\compmeanvec_q=\bm{0}$, then we can comfortably calculate the covariance to be
+\begin{equation}
+\Cov{\obsvec_n}=\sum_{q=1}^{Q}\compweight_q\compcov_q
+\end{equation}
+or
+\begin{equation}
+\Cov{\obsvec_n}=\frac{1}{Q}\sum_{q=1}^{Q}\E{\compcov_q}
+\end{equation}
+in the fully marginalized case.
+This case includes factor analyzers of various sorts. These models typically also assume that the covariance of each component has low-rank structure
+\begin{equation}
+\compcov_q=\mix \sourcecov_q\mix\T+\noisecov
+\end{equation}  
+which then leads to a covariance matrix of the form
+\begin{equation}
+\Cov{\obsvec_n}=\mix\left(\sum_{q=1}^{Q}\compweight_q\sourcecov_q\right)\mix\T+\noisecov.
+\end{equation}
+In this case it can also be interesting to calculate the trace of the covariance matrix, which is simply
+\begin{equation}
+\trace(\Cov{\obsvec_n})=\trace\left(\mix\T\mix\left(\sum_{q=1}^{Q}\compweight_q\sourcecov_q\right)\right)+\trace(\noisecov).
+\end{equation}
+The total covariance is also amenable to marginalization over the hyperparameters yielding a, 
+\begin{equation}
+\trace(\Cov{\obsvec_n})=\trace\left(\E{\mix\T\mix}\left(\frac{1}{Q}\sum_{q=1}^{Q}\E{\sourcecov_q}\right)\right)+\trace(\E{\noisecov}).
+\end{equation}
+If we assume that $\mix$ is a standard Gaussian ensemble with $[\mix]_{ij}\sim \gaussrnd(0,1)$ then $\mix\T\mix$ follows a Wishart distribution with mean $d\bm{I}$ where $d$ is the dimensionality of $\obsvec_n$. The total covariance then simplifies to 
+\begin{equation}
+\label{eq:totalcov}
+\trace(\Cov{\obsvec_n})=\frac{d}{Q}\sum_{q=1}^{Q}\trace(\E{\sourcecov_q})+\trace(\E{\noisecov}).
+\end{equation}
+\subsubsection{Centered Independent Factor Analysis}
+For a centered independent factor analysis model, $\compcov_q$ is diagonal and has inverse Gamma distributions on its diagonal elements. Take the distribution to have mean ${m}_{\scalesq}$. While the original model has unconstrained $\noisecov$, we assume it to be a scaled unit matrix with the scaling factor also following an inverse Gamma distribution with mean ${m}_{\noisescalesq}$. The resulting total covariance is
+\begin{equation}
+\trace(\Cov{\obsvec_n})=dKm_{\scalesq}+dm_{\noisescalesq}.
+\end{equation}
+\subsubsection{Projected Mixture}
+We define projected mixtures to be mixtures on a low-rank space that are then projected up into the observation space using a factor matrix $\mix$ as with a factor model. Again we assume that,
+\begin{equation}
+\compcov_q=\mix \sourcecov_q\mix\T+\noisecov
+\end{equation} 
+but now we let the mean be non-zero and we do not assume $\sourcecov_q$ to be diagonal. We can still follow the derivation that culminated with equation \ref{eq:totalcov}, only applying it to the non-zero mean covariance from equation \ref{eq:margcov}, leaving
+\begin{equation}
+\trace(\Cov{\obsvec_n})=\trace(\noisecov_{\compmean})+\frac{d}{Q}\sum_{q=1}^{Q}\trace(\E{\sourcecov_q})+\trace(\E{\noisecov}).
+\end{equation}
+We make the same assumptions about noise as for the centered IFA. We take the mean to be low-rank $\compmeanvec_q=\mix {\compmeanvec}'_q$ where $\compmeanvec'_q~\gaussrnd(\bm{0},\alpha_0\bm{I})$ so that
+\begin{equation}
+\trace(\Cov{\compmeanvec_q})=\alpha_0\trace(\E{\mix\T\mix})=dK\alpha_0 
+\end{equation}
+
+ but take $\noisecov_{\compmean}=\alpha_0\bm{I}$ and let $\compcov_q$ follow an inverse Wishart which has mean 
+\begin{equation}
+\E{\compcov_q}=\frac{\alpha}{\nu - K - 1}\bm{I}
+\end{equation}
+for scale matrix $\alpha \bm{I}$ and degrees of freedom $\nu$. This yields the total covariance,
+\begin{equation}
+\trace(\Cov{\obsvec_n})=d\alpha_0+\frac{dK\alpha}{\nu-K-1}+dm_{\noisescalesq}
+\end{equation}  
+
+If we employ Wishart priors $\operatorname{Wis}(\alpha\bm{I},\nu)$ instead of the conjugate inverse Wishart the expression simplifies to,
+\begin{equation}
+\trace(\Cov{\obsvec_n})=d\alpha_0+dK\nu\alpha+dm_{\noisescalesq}
+\end{equation}  
+
+
+\subsection{Tuning the Inverse Gamma}
+For an inverse Gamma distribution $\operatorname{InvGamma}(\alpha,\beta)$ the mean and variance does not exist unless $\alpha>2$, so we consider a random variable $X\sim\operatorname{InvGamma}(2+\alpha,\beta)$. $X$ then has mean and variance equal to 
+\begin{align}
+\E{X}=&\frac{\beta}{\alpha+1}\\
+\Var{X}=&\frac{\beta^2}{\alpha(\alpha+1)^2}
+\end{align}
+If we set $\E{X}=m$ and $\Var{X}=v$, then we can isolate the alpha and beta parameters in terms of the mean and variance as,
+\begin{align}
+\beta=m\left(1+\frac{m^2}{v}\right),\quad 
+\alpha=\frac{m^2}{v}
+\end{align}
+
+
+
+Employing Markov's inequality, we can bound the tail probability using both the mean and the variance as 
+\begin{equation}
+\mathbb{P}[X\geq a]\leq \frac{\E{X}}{a},\quad \mathbb{P}[X\geq a]\leq \frac{\Var{X}}{(a-\E{X})^2}.
+\end{equation}
+Assume that the mean is set equal to $m$. Then if we want less than $t$ mass in the tails, we can select the variance to be
+\begin{equation}
+\Var{X}=t(a-m)^2
+\end{equation}
+
+For a noise variable, we are likely to want a low mean variance like $m=10^{-1}$, and we likely want to contain (at least) $1-t=0.95$ of the probability mass to $[0,1]$ requiring $a=1$. This results in a proposed variance of 
+\begin{equation}
+\Var{X}=\frac{1}{20}(1-10^{-1})^2=0.0405
+\end{equation} 
+this roughly holds if $\beta=0.1247$ and $\alpha=0.2469$ (or $\alpha=2.2469$ in the original parameterization).
+
+\subsection{Tuning the Projected Mixture}
+For the projected mixture, we need to fix four effective parameters. We make the assumption that,
+\begin{equation}
+K\alpha_0=\frac{K\alpha}{\nu-K-1}
+\end{equation}
+which corresponds to matching the total covariance contribution of the component means and the observations. Assuming the total covariance is $d$ (corresponding to an identity covariance matrix) then we have,
+\begin{equation}
+1-m_{\noisescalesq}=\frac{2K\alpha}{\nu-K-1}.
+\end{equation}
+Using this, we can isolate $\alpha$,
+\begin{equation}
+\alpha=(\nu-K-1)\frac{1-m_{\noisescalesq}}{2K}.
+\end{equation}
+For the inverse Wishart the diagonal elements $\compcov_{ii}$ have variance,
+\begin{equation}
+\Var{\compcov_{ii}}=\frac{2\alpha^2}{(\nu-K-1)^2(\nu-K-3)}.
+\end{equation}
+If we fix the variance, we can insert the above value for $\alpha$ and isolate $\nu$ as
+\begin{equation}
+\nu=K+3+2\frac{(\frac{1-m_{\noisescalesq}}{2K})^2}{\Var{\compcov_{ii}}}
+\end{equation}
+Adding it back in we get the following formula for $\alpha$,
+\begin{equation}
+\alpha=\left(1+\frac{\left(\frac{1-m_{\noisescalesq}}{2K}\right)^2}{\Var{\compcov_{ii}}}\right)\frac{1-m_{\noisescalesq}}{K}
+\end{equation}
+
+With Wishart priors, we start with
+\begin{equation}
+\alpha=\frac{1-m_{\noisescalesq}}{2K\nu},
+\end{equation}
+and using the variance expression,
+\begin{equation}
+\Var{\compcov_{ii}}=2\nu\alpha^2,
+\end{equation}
+we can isolate $\nu$,
+\begin{equation}
+\nu=\frac{(1-m_{\noisescalesq})^2}{2K^2\Var{\compcov_{ii}}}
+\end{equation}
+and then find $\alpha$,
+\begin{equation}
+\alpha=\frac{K\Var{\compcov_{ii}}}{1-m_{\noisescalesq}}.
+\end{equation}
+
+
+
+\subsection{Low-rank Gaussian density}
+\newcommand{\excov}{\bm{\Sigma}}
+The Gaussian density function is given by,
+\begin{equation}
+\frac{1}{\sqrt{(2\pi)^d}|\excov|}\exp(-\frac{1}{2}(\x-\meanvec)\T\excov^{-1}(\x-\meanvec))
+\end{equation}
+If $\excov$ is low-rank,
+\begin{equation}
+\excov=\mix\bm{S}\mix\T+\bm{D}
+\end{equation}
+then we can employ tricks to calculate the inverse more efficiently. The Woodbury matrix identity yields,
+\begin{equation}
+(\mix\bm{S}\mix\T+\bm{D})^{-1}=\bm{D}^{-1}-\bm{D}^{-1}\mix(\bm{S}^{-1}+\mix\T\bm{D}^{-1}\mix)^{-1}\mix\T\bm{D}^{-1},
+\end{equation}
+which can be simplified further if the cholesky factorization $\bm{L}\bm{L}\T=\bm{S}$ is known, as we can pull the factors outside,
+\begin{equation}
+(\mix\bm{S}\mix\T+\bm{D})^{-1}=\bm{D}^{-1}-\bm{D}^{-1}\mix\bm{L}(\bm{I}+\bm{L}\T\mix\T\bm{D}^{-1}\mix\bm{L})^{-1}\bm{L}\T\mix\T\bm{D}^{-1}.
+\end{equation}
+If we define $\bm{B}=\bm{D}^{-1}\mix\bm{L}$ then this can be written fairly succinctly as,
+\begin{equation}
+(\mix\bm{S}\mix\T+\bm{D})^{-1}=\bm{D}^{-1}-\bm{B}(\bm{I}+\bm{B}\T\bm{D}\bm{B})^{-1}\bm{B}\T.
+\end{equation}
+which only requires inversion of diagonal matrices and matrices of the same shape as $\bm{S}$, which can be smaller than $\excov$ by design.
+
+We can similarly apply the matrix determinant lemma to calculate the determinant as
+\begin{equation}
+|\mix\bm{S}\mix\T+\bm{D}|=|\bm{D}||\bm{I}+\bm{L}\T\mix\T\bm{D}^{-1}\mix\bm{L}|=|\bm{D}||\bm{I}+\bm{B}\T\bm{D}\bm{B}|
+\end{equation}
+
+\end{document}
