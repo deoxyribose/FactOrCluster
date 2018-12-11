@@ -1,0 +1,178 @@
+\documentclass{article}
+\input{preambles/basicmath}
+\input{preambles/extrasymbols}
+
+\newcommand{\mix}{\bm{A}}
+\newcommand{\source}{s}
+\newcommand{\sourcevec}{\bm{\source}}
+\newcommand{\sourcecov}{\Sigma}
+\newcommand{\obs}{y}
+\newcommand{\obsvec}{\bm{\obs}}
+\newcommand{\mean}{\mu}
+\newcommand{\meanvec}{\bm{\mean}}
+\newcommand{\scale}{\sigma}
+\newcommand{\scalesq}{\scale^2}
+\newcommand{\weight}{w}
+\newcommand{\weightvec}{\bm{\weight}}
+\newcommand{\compweight}{\bar{\weight}}
+\newcommand{\compweightvec}{\bar{\bm{\weight}}}
+\newcommand{\assign}{z}
+\newcommand{\assignvec}{\bm{\assign}}
+\newcommand{\compmean}{\bar{\mean}}
+\newcommand{\compmeanvec}{\bar{\meanvec}}
+\newcommand{\compcov}{\bar{\bm{\Sigma}}}
+\newcommand{\compscalesq}{\bar{{\scale}}^2}
+\newcommand{\noisecov}{\bm{\Lambda}}
+\newcommand{\noisescalesq}{\lambda^2}
+
+\begin{document}
+The Projected mixture of Gaussians (proj-MoG) model assumes a standard generative factor model for the observations $\bm{y}$ with $K$ factors,  
+\begin{align*}
+\obsvec_n\sim \gaussrnd(\mix\sourcevec_n,\noisecov),
+\end{align*}
+but uses a mixture of Gaussians with $Q$ clusters for the sources,
+\begin{align*}
+\sourcevec_{n}\sim \sum_{q=1}^{Q}\compweight_{q}\gaussrnd(\compmeanvec_{q},\compcov_{q}),
+\end{align*}
+
+As with any mixture, we can express the mixture density using auxiliary indicators, where $\assign_{nq}=1$ if observation $n$ was drawn from component $q$, and $0$ otherwise.
+\begin{equation}
+\sourcevec_n\cond \assignvec_n\sim\prod_{q=1}^Q\gaussrnd(\compmeanvec_{q},\compcov_q)^{\assign_{nq}},\quad \assignvec_n\sim \multrnd(\compweightvec).
+\end{equation}
+
+with $N$ observations, the full log-joint has terms
+\begin{align*}
+\ln p(\obsvec|\sourcevec)&=\sum_{n=1}^{N}\left(-\frac{1}{2}(\obsvec_n-\mix\sourcevec_n)\T\noisecov^{-1}(\obsvec_n-\mix\sourcevec_n)-\frac{1}{2}\ln|\noisecov|-\frac{D}{2}\ln 2\pi)\right)\\
+\ln p(\sourcevec|\assignvec)&=\sum_{n=1}^{N}\sum_{q=1}^{Q}\assign_{nq}\left(-\frac{1}{2}(\sourcevec_n-\compmeanvec_q)\T\compcov^{-1}_q(\sourcevec_n-\compmeanvec_q)-\frac{1}{2}\ln|\compcov_q|-\frac{D}{2}\ln 2\pi)\right)\\
+\ln p(\assignvec)&=\sum_{n=1}^{N}\sum_{q=1}^{Q}\assign_{nq}\ln \compweight_{q}
+\end{align*}
+To compute gradients in $\ln p(\obsvec)$, we need to be able to integrate $\sourcevec$ and $\assignvec$ over $p(\sourcevec,\assignvec|\obsvec)=p(\sourcevec|\assignvec,\obsvec)p(\assignvec|\obsvec)$. First we have a standard Gaussian posterior,
+\begin{equation}
+p(\sourcevec_n|\assign_{nq}=1,\obsvec_n)=\gaussrnd(\bm{V}_q\left(\mix\T\noisecov^{-1}\obsvec_n + \compcov_q^{-1}\compmeanvec_q\right),\bm{V}_q),\quad \bm{V}_q=(\mix\T\noisecov^{-1}\mix+\compcov^{-1}_q)^{-1}
+\end{equation}
+and then using a standard responsibility argument, we can find the posterior of the assignment indicators $\assignvec$ as
+\begin{equation}
+p(\assignvec_{nq}=1|\obsvec_n)\propto \compweight_{q}p(\obsvec_n|\assign_{nq}=1)=\compweight_{q}\gaussrnd(\obsvec_n|\mix\compmeanvec_q,\noisecov+\mix\compcov_q\mix\T).
+\end{equation}
+\subsection{Mixture weights}
+Since $\sum_{q=1}^{Q}\compweight_{q}=1$, we have to add Lagrangians, and due to the positivity constraint we reparameterize as $v_{q}=\ln\compweight_{q}$. The gradient is then  
+\begin{equation}
+\nabla_{v_{q}}\left(\ln p(\obsvec,\sourcevec,\assignvec) +\sum_{\ell=1}^{K}\rho_\ell(1-\sum_{d=1}^{C}e^{v_{\ell d}})\right)=\sum_{n=1}^N\sum_{q=1}^Q\assign_{nq}-\rho_ke^{v_{q}}
+\end{equation}
+Taking the expectation and solving we find,
+\begin{equation}
+\compweight_{q}\propto\sum_{n=1}^{N}\E{\assign_{nq}}
+\end{equation}
+If we add a Dirichlet prior $\compweightvec\sim\dirrnd(\bm{\alpha})$, then it contributes with the terms 
+\begin{equation}
+\nabla_{v_{q}}\ln p(\weightvec)=\alpha_{q}-1
+\end{equation}
+which changes the analytical solution to
+\begin{equation}
+\compweight_{q}\propto (\alpha_{q}-1)+\sum_{n=1}^{N}\E{\assign_{nq}}
+\end{equation}
+\subsection{Mixture Mean}
+\begin{equation}
+\nabla_{\compmeanvec_q}\ln p(\obsvec,\sourcevec,\assignvec)=-\frac{1}{2}\sum_{n=1}^{N}\assign_{nq}\left(\compcov_q^{-1}(\sourcevec_n-\compmeanvec_q)\right)
+\end{equation}
+taking the expectation, setting to zero, and isolating,
+\begin{equation}
+\compmeanvec_q=\frac{1}{\sum_{n=1}^{N}\E{\assign_{nq}}}\sum_{n=1}^{N}\E{\assign_{nq}}\E{\sourcevec_n|\assign_{nq}=1}
+\end{equation}
+or we can introduce a prior in the form of a normal, \begin{equation}
+\nabla_{\compmeanvec_q}\ln\gaussrnd(\compmeanvec_q|\compmeanvec_0,\tau\bm{I})=-\frac{1}{2\tau}\nabla_{\compmeanvec_q}\left(\compmeanvec_q-\compmeanvec_0\right)\T\left(\compmeanvec_q-\compmeanvec_0\right)=-\frac{1}{\tau}(\compmeanvec_q-\compmeanvec_0)
+\end{equation}
+which we can add in before solving,
+\begin{equation}
+\compmeanvec_q=\left(\frac{1}{\tau}\compcov_q+\left(\sum_{n=1}^{N}\E{\assign_{nq}}\right)\bm{I}\right)^{-1}\left(\frac{1}{\tau}\compcov_q\compmeanvec_0+\sum_{n=1}^{N}\E{\assign_{nq}}\E{\sourcevec_n|\assign_{nq}=1}\right)
+\end{equation}
+If we use the conjugate prior $\gaussrnd(\compmeanvec_q|\compmeanvec_0,\tau\compcov_q)$ instead, this simplifies to an expression that does not involve matrix inverses,
+\begin{equation}
+\compmeanvec_q=\frac{1}{\frac{1}{\tau}+\sum_{n=1}^{N}\E{\assign_{nq}}}\left(\frac{1}{\tau}\compmeanvec_0+\sum_{n=1}^{N}\E{\assign_{nq}}\E{\sourcevec_n|\assign_{nq}=1}\right)
+\end{equation}
+
+
+
+
+\subsection{Mixture Variance}
+Taking the gradient in $\compcov_q$, we get
+\begin{equation}
+\nabla_{\compcov_q}\ln p(\obsvec,\sourcevec,\assignvec)=\frac{1}{2}\sum_{n=1}^{N}\assign_{nq}\left(\compcov_q^{-1}(\sourcevec_n-\compmeanvec_q)(\sourcevec_n-\compmeanvec_q)\T\compcov_q^{-1}-\compcov^{-1}_q\right)
+\end{equation}
+Taking the expectation and setting to $0$, we can then isolate the covariance matrix, 
+\begin{equation}
+\compcov_q=\frac{1}{\sum_{n=1}^{N}\E{\assign_{nq}}}\left(\sum_{n=1}^{N}\E{\assign_{nq}}\E{(\sourcevec_n-\compmeanvec_q)(\sourcevec_n-\compmeanvec_q)\T|\assign_{nq}=1}\right)
+\end{equation}
+If we impose a conjugate inverse Wishart prior with log-density,
+\begin{equation}
+\ln \mathcal{W}^{-1}(\compcov|\bm{\Psi},\nu)=-\frac{\nu+p+1}{2}\ln|\compcov|-\frac{1}{2}\trace({\bm{\Psi}\compcov^{-1}})+\const
+\end{equation}
+we can add the derivative given by,
+\begin{equation}
+\nabla_{\compcov}\ln p(\compcov)=-\frac{\nu+p+1}{2}\compcov^{-1}+\frac{1}{2}\compcov^{-1}\bm{\Psi}\compcov^{-1}
+\end{equation}
+to compute the following MAP update as well,
+\begin{equation}
+\compcov_q=\frac{1}{\sum_{n=1}^{N}\E{\assign_{nq}}+\nu+p+1}\left(\Psi+\sum_{n=1}^{N}\E{\assign_{nq}}\E{(\sourcevec_n-\compmeanvec_q)(\sourcevec_n-\compmeanvec_q)\T|\assign_{nq}=1}\right).
+\end{equation}
+
+\subsection{Noise Variance}
+\begin{equation}
+\nabla_{\noisecov}\ln p(\obsvec,\sourcevec,\assignvec)=\frac{1}{2}\sum_{n=1}^{N}\left(\noisecov^{-1}(\obsvec_n-\mix\sourcevec_n)(\obsvec_n-\mix\sourcevec_n)\T\noisecov^{-1}-\noisecov^{-1}\right)
+\end{equation}
+Taking the diagonal elements $\noisescalesq_k$
+\begin{equation}
+\pdv{\noisescalesq_{k}}\ln p(\obsvec,\sourcevec,\assignvec)=\frac{1}{2}\left(\sum_{n=1}^{N}\left(\frac{\obs_{nk}-\bm{e}_k\T\mix\sourcevec_n}{\noisescalesq_{k}}\right)^2-N\frac{1}{\noisescalesq_k}\right)
+\end{equation}
+Taking the expectation and solving, we get
+\begin{equation}
+\noisescalesq_k=\frac{1}{N}\sum_{n=1}^{N}\E{(\obs_{nk}-\bm{e}_k\T\mix\sourcevec_n)^2}=\frac{1}{N}\sum_{n=1}^{N}(\obs_{nk}^2+\bm{e}_k\T\mix\E{\sourcevec_n\sourcevec_n\T}\mix\T\bm{e}_k-2\obs_{nk}\bm{e}_k\T\mix\E{\sourcevec_n})
+\end{equation}
+If $\noisescalesq_k$ is endowed with an inverse Gamma prior then it contributes the terms,
+\begin{equation}
+\nabla_{\noisescalesq}\ln p(\noisescalesq_k)=-(1+\alpha_k)\frac{1}{\noisescalesq_k}+\frac{\beta_k}{(\noisescalesq_k)^2}
+\end{equation}
+and adding those terms to the gradient we can solve again and find
+\begin{equation*}
+\noisescalesq_k=\frac{1}{N+2+2\alpha_k}\sum_{n=1}^{N}\left(2\beta_k+\E{(\obs_{nk}-\bm{e}_k\T\mix\sourcevec_n)^2}\right)
+\end{equation*}
+If we have a single $\noisescalesq_0$ controlling the noise level (scaled unit diagonal covariance), then the gradient simplifies
+\begin{equation}
+\pdv{\noisescalesq_{0}}\ln p(\obsvec,\sourcevec,\assignvec)=\frac{1}{(\noisescalesq_0)^2}\left(\frac{1}{2}\sum_{n=1}^{N}(\obsvec_n-\mix\sourcevec_n)\T(\obsvec_n-\mix\sourcevec_n)\right)-\frac{ND}{2}\frac{1}{\noisescalesq_0}
+%-\frac{1}{2\noisescalesq_0}\left(\frac{1}{\noisescalesq_0}\sum_{n=1}^{N}\left(\sum_{k=1}^K\obs_{nk}-\Tr[\mix\E{\sourcevec_n\sourcevec_n\T}\mix\T]-2\obsvec_n\T\mix\E{\sourcevec_n}\right)-NK\right)
+\end{equation}
+and taking the expectation and isolating yields,
+\begin{equation}
+\noisescalesq_0=\frac{\sum_{n=1}^{N}(\obsvec_n\T\obsvec_n+\Trace(\mix\T\mix\E{\sourcevec_n\sourcevec_n\T})-2\obsvec_n\T\mix\E{\sourcevec_n})}{ND}
+\end{equation}
+or if $\noisecov$ is a scaled unit matrix and 
+\begin{equation}
+\noisescalesq_0=\frac{2\beta_0+\sum_{n=1}^{N}(\obsvec_n\T\obsvec_n+\Trace(\mix\T\mix\E{\sourcevec_n\sourcevec_n\T})-2\obsvec_n\T\mix\E{\sourcevec_n})}{ND+2+2\alpha_0}
+\end{equation}
+
+\subsection{Factor Loadings}
+\begin{equation}
+\nabla_{\mix}\ln p(\obsvec,\sourcevec,\assignvec)=\noisecov^{-1}\sum_{n=1}^{N}(\obsvec_n-\mix\sourcevec_n)\sourcevec_n\T
+\end{equation}
+we can then again take the expectation, 
+\begin{equation}
+\E{\nabla_{\mix}\ln p(\obsvec,\sourcevec,\assignvec)}=\noisecov^{-1}\left(\sum_{n=1}^{N}\obsvec_n\E{\sourcevec_n}\T-\mix\left(\sum_{n=1}^{N}\E{\sourcevec_n\sourcevec_n\T}\right)\right)
+\end{equation}
+and set the gradient to zero to find the optimal update
+\begin{equation*}
+\mix = \left(\sum_{n=1}^{N}\obsvec_n\E{\sourcevec_n}\T\right)\left(\sum_{n=1}^{N}\E{\sourcevec_n\sourcevec_n\T}\right)^{-1}
+\end{equation*}
+If we add a Gaussian prior $[\mix]_{ij}\sim \gaussrnd(0,\scalesq_{\mix})$ it contributes the term,
+\begin{equation*}
+\E{\nabla_{\mix}\ln p(\mix)}=-\frac{1}{\scalesq_{\mix}} \mix
+\end{equation*}
+and we can solve again to find the MAP update,
+\begin{equation*}
+\mix = \left(\sum_{n=1}^{N}\obsvec_n\E{\sourcevec_n}\T\right)\left(\sum_{n=1}^{N}\E{\sourcevec_n\sourcevec_n\T}+\frac{\noisescalesq}{\scalesq_{\mix}}\right)^{-1}
+\end{equation*}
+
+
+
+
+
+\end{document}

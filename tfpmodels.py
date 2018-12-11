@@ -7,7 +7,13 @@ import numpy as np
 from itertools import product
 from future_features import tape
 
+import pdb
+
 jitter = 1e-6
+
+def submatrix(A, pattern, axis=0):
+    pattern_size = sum(pattern)
+    return tf.reshape(tf.boolean_mask(A, mask=np.outer(pattern, pattern), axis=axis), (A.shape[0], pattern_size, pattern_size))
 
 def independentFactorAnalysis(n_observations = 1000, n_components_in_mixture = 2, n_sources = 2, n_features = 2, mixture_component_means_mean = 0., mixture_component_means_var = 1., mixture_component_var_concentration = 1., mixture_component_var_rate=1.,mixture_weights_concentration=None,data_var_concentration=1.,data_var_rate=1.):
     if mixture_weights_concentration is None:
@@ -42,9 +48,15 @@ def centeredIndependentFactorAnalysis(n_observations = 1000, n_components_in_mix
     data = ed.Normal(loc=data_mean, scale=tf.sqrt(data_var), name='data')  
     return data
 
-def centeredMarginalizedIndependentFactorAnalysis(n_observations = 1000, n_sources = 2, n_components_in_mixture=2, 
-    n_features = 2, mixture_component_var_concentration = 1., mixture_component_var_rate=1., 
-    mixture_weights_concentration=None, data_var_concentration=1., data_var_rate=1.):
+def centeredMarginalizedIndependentFactorAnalysis(n_observations = 1000, 
+                                                  n_sources = 2,
+                                                  n_components_in_mixture=2,
+                                                  n_features = 2,
+                                                  mixture_component_var_concentration = 1.,
+                                                  mixture_component_var_rate=1.,
+                                                  mixture_weights_concentration=None,
+                                                  data_var_concentration=1.,
+                                                  data_var_rate=1.):
     if mixture_weights_concentration is None:
         mixture_weights_concentration = np.ones(n_components_in_mixture, dtype='float64')
     combinations = tf.one_hot(np.array(list(
@@ -53,7 +65,7 @@ def centeredMarginalizedIndependentFactorAnalysis(n_observations = 1000, n_sourc
     n_combinations = combinations.shape[0]
     mixture_component_var = ed.InverseGamma(concentration=tf.convert_to_tensor(mixture_component_var_concentration, dtype='float64'),
         rate=tf.convert_to_tensor(mixture_component_var_rate, dtype='float64'),
-        sample_shape=(n_sources,n_components_in_mixture), name='mixture_component_var')
+        sample_shape=(), name='mixture_component_var') #sample_shape=(n_sources, n_components_in_mixture)
     mixture_weights = ed.Dirichlet(concentration=tf.convert_to_tensor(mixture_weights_concentration, dtype='float64'),
         sample_shape=(n_sources,), name='mixture_weights')
     factor_loadings = ed.Normal(loc=tf.convert_to_tensor(0., dtype='float64'), 
@@ -97,34 +109,45 @@ def mixtureOfGaussians(n_observations = 1000, n_components = 2, n_features = 2, 
         sample_shape=(n_components), input_output_cholesky=True, name='mixture_component_covariances_cholesky')
 
     return ed.MixtureSameFamily(
-                mixture_distribution=tfd.Categorical(probs=mixture_weights),
+                mixture_distribution=tfd.Categorical(probs=mixture_weights).distribution,
                 components_distribution=tfd.MultivariateNormalTriL(
                     loc=mixture_component_means,
                     scale_tril=mixture_component_covariances_cholesky,
                     name='component'), sample_shape=(n_observations,), name='data')
 
-def projectedMixtureOfGaussians(n_observations = 1000, n_components = 2, n_sources = 2, n_features = 2, mixture_component_means_mean = 0., mixture_component_means_var = 1., mixture_component_covariances_cholesky_df = None, mixture_component_covariances_cholesky_scale_tril=None,mixture_weights_concentration=None, data_var_concentration=1., data_var_rate=1.):
+def projectedMixtureOfGaussians_Conjugate(n_observations = 1000, 
+                                          n_components = 2, 
+                                          n_sources = 2, 
+                                          n_features = 2, 
+                                          mixture_component_means_mean = 0., 
+                                          mixture_component_means_var = 1., 
+                                          mixture_component_precisions_cholesky_df = None, 
+                                          mixture_component_precisions_cholesky_scale_tril=None,
+                                          mixture_weights_concentration=None,
+                                          data_var_concentration=1.,
+                                          data_var_rate=1.):
     """n_components is the number of low-rank Gaussians
         n_sources is the number of factors in each low-rank Gaussian 
         the factor matrix is shared for all Gaussians
     """
     if mixture_weights_concentration is None:
         mixture_weights_concentration = np.ones(n_components, dtype='float64')
-    if mixture_component_covariances_cholesky_df is None:
-        mixture_component_covariances_cholesky_df = n_sources + 2.
-    if mixture_component_covariances_cholesky_scale_tril is None:
-        mixture_component_covariances_cholesky_scale_tril = (1./(mixture_component_covariances_cholesky_df - n_sources - 1.))*tf.eye(n_sources, dtype='float64')
+    if mixture_component_precisions_cholesky_df is None:
+        mixture_component_precisions_cholesky_df = n_sources + 2.
+    if mixture_component_precisions_cholesky_scale_tril is None:
+        mixture_component_precisions_cholesky_scale_tril = ((mixture_component_precisions_cholesky_df - n_sources - 1.))*tf.eye(n_sources, dtype='float64')
     
     factor_loadings = ed.Normal(loc=tf.convert_to_tensor(0., dtype='float64'), scale=tf.convert_to_tensor(1., dtype='float64'), sample_shape=(n_sources, n_features), name='factor_loadings')
     mixture_weights = ed.Dirichlet(concentration=mixture_weights_concentration, name='mixture_weights')
     mixture_component_means = ed.Normal(loc=tf.convert_to_tensor(mixture_component_means_mean, dtype='float64'), scale=tf.sqrt(tf.convert_to_tensor(mixture_component_means_var, dtype='float64')), sample_shape=(n_components, n_sources), name='mixture_component_means')
-    mixture_component_covariances_cholesky = ed.Wishart(
-        df=tf.convert_to_tensor(mixture_component_covariances_cholesky_df, dtype='float64'), scale_tril=tf.convert_to_tensor(mixture_component_covariances_cholesky_scale_tril, dtype='float64'), sample_shape=(n_components), input_output_cholesky=True, name='mixture_component_covariances_cholesky')
+    mixture_component_precisions_cholesky = ed.Wishart(
+        df=tf.convert_to_tensor(mixture_component_precisions_cholesky_df, dtype='float64'), scale_tril=tf.convert_to_tensor(mixture_component_precisions_cholesky_scale_tril, dtype='float64'), sample_shape=(n_components), input_output_cholesky=True, name='mixture_component_precisions_cholesky')
     data_var = ed.InverseGamma(concentration=tf.convert_to_tensor(data_var_concentration, dtype='float64'),
         rate=tf.convert_to_tensor(data_var_rate, dtype='float64'),
         sample_shape=(), name='data_var')
-
-    mixture_component_covariances = tf.einsum('bij,bjk->bik', mixture_component_covariances_cholesky,mixture_component_covariances_cholesky)
+    
+    mixture_component_covariances = tf.linalg.cholesky_solve(mixture_component_precisions_cholesky, tf.tile(tf.eye(n_sources, dtype='float64')[None,...], [n_components, 1, 1]))
+    mixture_component_covariances_cholesky = tf.cholesky(mixture_component_covariances) 
     projected_total_covariances = tf.einsum('bij,ik,jl->bkl', mixture_component_covariances, factor_loadings, factor_loadings) + (jitter + data_var)*tf.eye(n_features, dtype='float64')[None,:,:]
     data = ed.MixtureSameFamily(
         mixture_distribution=tfd.Categorical(probs=mixture_weights),
@@ -132,28 +155,127 @@ def projectedMixtureOfGaussians(n_observations = 1000, n_components = 2, n_sourc
         #components_distribution=tfd.MultivariateNormalTriL(loc=tf.einsum('sf,cs->cf',factor_loadings,mixture_component_means), 
         components_distribution=tfd.MultivariateNormalTriL(loc=tf.matmul(mixture_component_means,factor_loadings), 
         # the following einsum does something like this: [factor_loadings^T * mixture_component_covariances_cholesky[component,:,:] * factor_loadings for component in n_components]
-        scale_tril=tf.cholesky(tf.Print(projected_total_covariances,[projected_total_covariances])), 
+        scale_tril=tf.cholesky(projected_total_covariances), 
         name='component'), sample_shape=(n_observations,), name='data')
     return data
 
-def mixtureOfFactorAnalyzers(n_observations = 1000, n_components = 2, n_sources = 2, n_features = 2, mixture_component_means_mean = 0., mixture_component_means_var = 1., mixture_component_covariances_cholesky_df = None, mixture_component_covariances_cholesky_scale_tril=None, mixture_weights_concentration=None, data_var_concentration=1., data_var_rate=1.):
+def projectedMixtureOfGaussians_Conjugate(n_observations = 1000, 
+                                          n_components = 2, 
+                                          n_sources = 2, 
+                                          n_features = 2, 
+                                          mixture_component_means_mean = 0., 
+                                          mixture_component_means_var = 1., 
+                                          mixture_component_precisions_cholesky_df = None, 
+                                          mixture_component_precisions_cholesky_scale_tril=None,
+                                          mixture_weights_concentration=None,
+                                          data_var_concentration=1.,
+                                          data_var_rate=1.):
+    """n_components is the number of low-rank Gaussians
+        n_sources is the number of factors in each low-rank Gaussian 
+        the factor matrix is shared for all Gaussians
+    """
     if mixture_weights_concentration is None:
         mixture_weights_concentration = np.ones(n_components, dtype='float64')
-    if mixture_component_covariances_cholesky_df is None:
-        mixture_component_covariances_cholesky_df = n_sources + 2.
-    if mixture_component_covariances_cholesky_scale_tril is None:
-        mixture_component_covariances_cholesky_scale_tril = (1./(mixture_component_covariances_cholesky_df - n_sources - 1.))*tf.eye(n_sources, dtype='float64')
-    factor_loadings = ed.Normal(loc=0., scale=1., sample_shape=(n_components, n_sources, n_features), name='factor_loadings')
+    if mixture_component_precisions_cholesky_df is None:
+        mixture_component_precisions_cholesky_df = n_sources + 2.
+    if mixture_component_precisions_cholesky_scale_tril is None:
+        mixture_component_precisions_cholesky_scale_tril = ((mixture_component_precisions_cholesky_df - n_sources - 1.))*tf.eye(n_sources, dtype='float64')
+    
+    factor_loadings = ed.Normal(loc=tf.convert_to_tensor(0., dtype='float64'), scale=tf.convert_to_tensor(1., dtype='float64'), sample_shape=(n_sources, n_features), name='factor_loadings')
     mixture_weights = ed.Dirichlet(concentration=mixture_weights_concentration, name='mixture_weights')
-    data_var = ed.Gamma(concentration=data_var_concentration, rate=data_var_rate, sample_shape=(1,n_features), name='data_var')
-        
+    mixture_component_means = ed.Normal(loc=tf.convert_to_tensor(mixture_component_means_mean, dtype='float64'), scale=tf.sqrt(tf.convert_to_tensor(mixture_component_means_var, dtype='float64')), sample_shape=(n_components, n_sources), name='mixture_component_means')
+    mixture_component_precisions_cholesky = ed.Wishart(
+        df=tf.convert_to_tensor(mixture_component_precisions_cholesky_df, dtype='float64'), scale_tril=tf.convert_to_tensor(mixture_component_precisions_cholesky_scale_tril, dtype='float64'), sample_shape=(n_components), input_output_cholesky=True, name='mixture_component_precisions_cholesky')
+    data_var = ed.InverseGamma(concentration=tf.convert_to_tensor(data_var_concentration, dtype='float64'),
+        rate=tf.convert_to_tensor(data_var_rate, dtype='float64'),
+        sample_shape=(), name='data_var')
+    
+    mixture_component_covariances = tf.linalg.cholesky_solve(mixture_component_precisions_cholesky, tf.tile(tf.eye(n_sources, dtype='float64')[None,...], [n_components, 1, 1]))
+    mixture_component_covariances_cholesky = tf.cholesky(mixture_component_covariances) 
+    projected_total_covariances = tf.einsum('bij,ik,jl->bkl', mixture_component_covariances, factor_loadings, factor_loadings) + (jitter + data_var)*tf.eye(n_features, dtype='float64')[None,:,:]
+    projected_means = tf.matmul(mixture_component_means,factor_loadings)
     data = ed.MixtureSameFamily(
         mixture_distribution=tfd.Categorical(probs=mixture_weights),
-        components_distribution=tfd.MultivariateNormalDiagPlusLowRank(loc=tf.zeros((n_components, n_features)), 
-        scale_perturb_diag=tf.ones((n_components, n_sources)), 
-        scale_perturb_factor=factor_loadings, 
-        scale_diag=tf.tile(data_var, [n_components, 1]), name='data_component'), sample_shape=(n_observations,), name='data')  
+        components_distribution=tfd.MultivariateNormalTriL(loc=projected_means, 
+        scale_tril=tf.cholesky(projected_total_covariances), 
+        name='component'), sample_shape=(n_observations,), name='data')
     return data
+
+def projectedMixtureOfGaussians_Conjugate_missing(n_observations = 1000, 
+                                                  n_components = 2, 
+                                                  n_sources = 2, 
+                                                  n_features = 2, 
+                                                  mixture_component_means_mean = 0., 
+                                                  mixture_component_means_var = 1., 
+                                                  mixture_component_precisions_cholesky_df = None, 
+                                                  mixture_component_precisions_cholesky_scale_tril=None,
+                                                  mixture_weights_concentration=None,
+                                                  data_var_concentration=1.,
+                                                  data_var_rate=1.,
+                                                  n_patterns=0,
+                                                  patterns=None,
+                                                  pattern_count=None,
+                                                  ):
+    """n_components is the number of low-rank Gaussians
+        n_sources is the number of factors in each low-rank Gaussian 
+        the factor matrix is shared for all Gaussians
+    """
+    if mixture_weights_concentration is None:
+        mixture_weights_concentration = np.ones(n_components, dtype='float64')
+    if mixture_component_precisions_cholesky_df is None:
+        mixture_component_precisions_cholesky_df = n_sources + 2.
+    if mixture_component_precisions_cholesky_scale_tril is None:
+        mixture_component_precisions_cholesky_scale_tril = ((mixture_component_precisions_cholesky_df - n_sources - 1.))*tf.eye(n_sources, dtype='float64')
+    
+    factor_loadings = ed.Normal(loc=tf.convert_to_tensor(0., dtype='float64'), scale=tf.convert_to_tensor(1., dtype='float64'), sample_shape=(n_sources, n_features), name='factor_loadings')
+    mixture_weights = ed.Dirichlet(concentration=mixture_weights_concentration, name='mixture_weights')
+    mixture_component_means = ed.Normal(loc=tf.convert_to_tensor(mixture_component_means_mean, dtype='float64'), scale=tf.sqrt(tf.convert_to_tensor(mixture_component_means_var, dtype='float64')), sample_shape=(n_components, n_sources), name='mixture_component_means')
+    mixture_component_precisions_cholesky = ed.Wishart(
+        df=tf.convert_to_tensor(mixture_component_precisions_cholesky_df, dtype='float64'), scale_tril=tf.convert_to_tensor(mixture_component_precisions_cholesky_scale_tril, dtype='float64'), sample_shape=(n_components), input_output_cholesky=True, name='mixture_component_precisions_cholesky')
+    data_var = ed.InverseGamma(concentration=tf.convert_to_tensor(data_var_concentration, dtype='float64'),
+        rate=tf.convert_to_tensor(data_var_rate, dtype='float64'),
+        sample_shape=(), name='data_var')
+    
+    mixture_component_covariances = tf.linalg.cholesky_solve(mixture_component_precisions_cholesky, tf.tile(tf.eye(n_sources, dtype='float64')[None,...], [n_components, 1, 1]))
+    mixture_component_covariances_cholesky = tf.cholesky(mixture_component_covariances) 
+    projected_total_covariances = tf.einsum('bij,ik,jl->bkl', mixture_component_covariances, factor_loadings, factor_loadings) + (jitter + data_var)*tf.eye(n_features, dtype='float64')[None,:,:]
+    projected_means = tf.matmul(mixture_component_means,factor_loadings)
+    if n_patterns>0:
+        data = []
+        for ipattern, pattern in enumerate(patterns):
+            data_with_pattern = ed.MixtureSameFamily(
+                mixture_distribution=tfd.Categorical(probs=mixture_weights),
+                components_distribution=tfd.MultivariateNormalTriL(loc=tf.boolean_mask(projected_means, pattern, axis=1), 
+                scale_tril=tf.cholesky(submatrix(projected_total_covariances, pattern, axis=1)), 
+                name='component'), sample_shape=(pattern_count[ipattern],), name='data_{}'.format(ipattern))
+            data.append(data_with_pattern) 
+    else:
+        data = ed.MixtureSameFamily(
+            mixture_distribution=tfd.Categorical(probs=mixture_weights),
+            components_distribution=tfd.MultivariateNormalTriL(loc=projected_means, 
+            scale_tril=tf.cholesky(projected_total_covariances), 
+            name='component'), sample_shape=(n_observations,), name='data')
+    return data
+
+
+#def mixtureOfFactorAnalyzers(n_observations = 1000, n_components = 2, n_sources = 2, n_features = 2, mixture_component_means_mean = 0., mixture_component_means_var = 1., mixture_component_covariances_cholesky_df = None, mixture_component_covariances_cholesky_scale_tril=None, mixture_weights_concentration=None, data_var_concentration=1., data_var_rate=1.):
+#    if mixture_weights_concentration is None:
+#        mixture_weights_concentration = np.ones(n_components, dtype='float64')
+#    if mixture_component_covariances_cholesky_df is None:
+#        mixture_component_covariances_cholesky_df = n_sources + 2.
+#    if mixture_component_covariances_cholesky_scale_tril is None:
+#        mixture_component_covariances_cholesky_scale_tril = (1./(mixture_component_covariances_cholesky_df - n_sources - 1.))*tf.eye(n_sources, dtype='float64')
+#    factor_loadings = ed.Normal(loc=0., scale=1., sample_shape=(n_components, n_sources, n_features), name='factor_loadings')
+#    mixture_weights = ed.Dirichlet(concentration=mixture_weights_concentration, name='mixture_weights')
+#    data_var = ed.Gamma(concentration=data_var_concentration, rate=data_var_rate, sample_shape=(1,n_features), name='data_var')
+#        
+#    data = ed.MixtureSameFamily(
+#        mixture_distribution=tfd.Categorical(probs=mixture_weights).distribution,
+#        components_distribution=tfd.MultivariateNormalDiagPlusLowRank(loc=tf.zeros((n_components, n_features)), 
+#        scale_perturb_diag=tf.ones((n_components, n_sources)), 
+#        scale_perturb_factor=factor_loadings, 
+#        scale_diag=tf.tile(data_var, [n_components, 1]), name='data_component'), sample_shape=(n_observations,), name='data')  
+#    return data
 
 #####
 # Test functions
@@ -185,7 +307,7 @@ def mixtureOfFactorAnalyzers(n_observations = 1000, n_components = 2, n_sources 
 #def centeredIndependentFactorAnalysisTest(n_observations, mc_samples, factor_loadings, mixture_weights, mixture_component_var, data_var):
 #    sources = ed.Independent(
 #        tfd.MixtureSameFamily(
-#            mixture_distribution=tfd.Categorical(probs=mixture_weights),
+#            mixture_distribution=tfd.Categorical(probs=mixture_weights).distribution,
 #            components_distribution=tfd.Normal(loc=tf.zeros_like(mixture_component_var), scale=tf.sqrt(mixture_component_var), name='mixture_component')),
 #        reinterpreted_batch_ndims=1,sample_shape=(mc_samples, n_observations),name='sources')
 #    data_mean = tf.einsum('bik,kj->ijb', sources, factor_loadings/tf.linalg.norm(factor_loadings, axis=1, keepdims=True), name='data_mean')
@@ -197,7 +319,7 @@ def mixtureOfFactorAnalyzers(n_observations = 1000, n_components = 2, n_sources 
 #def centeredIndependentFactorAnalysisTest2(n_observations, factor_loadings, mixture_weights, mixture_component_var, data_var):
 #    sources = ed.Independent(
 #        tfd.MixtureSameFamily(
-#            mixture_distribution=tfd.Categorical(probs=mixture_weights),
+#            mixture_distribution=tfd.Categorical(probs=mixture_weights).distribution,
 #            components_distribution=tfd.Normal(loc=tf.zeros_like(mixture_component_var), scale=tf.sqrt(mixture_component_var), name='mixture_component')),
 #        reinterpreted_batch_ndims=1,sample_shape=(n_observations, ),name='sources')
 #    #data_mean = tf.einsum('ik,kj->ij', sources, factor_loadings, name='data_mean')
@@ -209,7 +331,7 @@ def mixtureOfFactorAnalyzers(n_observations = 1000, n_components = 2, n_sources 
 #
 #def mixtureOfGaussiansTest(n_observations, mixture_weights, mixture_component_means, mixture_component_covariances_cholesky):
 #    return ed.MixtureSameFamily(
-#                mixture_distribution=tfd.Categorical(probs=mixture_weights),
+#                mixture_distribution=tfd.Categorical(probs=mixture_weights).distribution,
 #                components_distribution=tfd.MultivariateNormalTriL(
 #                    loc=mixture_component_means,
 #                    scale_tril=mixture_component_covariances_cholesky,
@@ -234,7 +356,7 @@ def mixtureOfFactorAnalyzers(n_observations = 1000, n_components = 2, n_sources 
 #    mixture_weights = ed.Dirichlet(concentration=hyperparameters['mixture_weights_concentration'], sample_shape=(n_sources,), name='mixture_weights')
 #    sources = ed.Independent(
 #        tfd.MixtureSameFamily(
-#            mixture_distribution=tfd.Categorical(probs=mixture_weights),
+#            mixture_distribution=tfd.Categorical(probs=mixture_weights).distribution,
 #            components_distribution=tfd.Normal(loc=tf.zeros_like(mixture_component_var), scale=mixture_component_var, name='mixture_component')),
 #        reinterpreted_batch_ndims=1,sample_shape=(n_observations,),name='sources')
 #    factor_loadings = ed.Normal(loc=0., scale=1., sample_shape=(n_sources, n_features), name='factor_loadings')
